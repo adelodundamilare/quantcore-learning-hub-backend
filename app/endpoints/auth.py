@@ -22,21 +22,21 @@ def login_for_access_token(
     """Standard OAuth2 login, returns a token and available user contexts."""
     return auth_service.login(db=db, form_data=form_data)
 
-@router.post("/select-context", response_model=Token)
+@router.post("/select-context", response_model=APIResponse[Token])
 def select_context(
     *,
     db: Session = Depends(deps.get_db),
     context_request: SelectContextRequest,
-    # This uses a basic token that only contains user_id
     current_user: User = Depends(deps.get_current_user)
 ):
     """Exchange a basic token and a context choice for a scoped token."""
-    return auth_service.select_context(
-        db=db,
-        user=current_user,
-        school_id=context_request.school_id,
+    token_data = auth_service.select_context(
+        db=db, 
+        user=current_user, 
+        school_id=context_request.school_id, 
         role_id=context_request.role_id
     )
+    return APIResponse(message="Context selected successfully", data=token_data)
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(

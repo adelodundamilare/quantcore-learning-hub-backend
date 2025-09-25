@@ -51,7 +51,7 @@ def invite_user(
         db, invited_by=context.user, school=context.school, invite_in=invite_in
     )
 
-@router.post("/me/change-password")
+@router.post("/me/change-password", response_model=APIResponse[None])
 async def change_password(
     old_password: str,
     new_password: str,
@@ -72,7 +72,7 @@ async def change_password(
         # log out current session
         auth_service.logout(db=db, token=credentials.credentials)
         logger.info(f"Password changed for user: {current_user.email}")
-        return {"message": "Password updated successfully"}
+        return APIResponse(message="Password updated successfully")
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise

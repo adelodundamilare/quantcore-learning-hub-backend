@@ -17,7 +17,7 @@ def create_role(
     """Create a new role."""
     return crud_role.create(db=db, obj_in=role_in)
 
-@router.get("/{role_id}", response_model=Role)
+@router.get("/{role_id}", response_model=APIResponse[Role])
 def read_role(
     *, 
     db: Session = Depends(deps.get_db), 
@@ -27,7 +27,7 @@ def read_role(
     role = crud_role.get(db=db, id=role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
-    return role
+    return APIResponse(message="Role retrieved successfully", data=role)
 
 @router.post("/{role_id}/permissions/{permission_id}", response_model=Role, dependencies=[Depends(deps.require_permission(PermissionEnum.PERMISSION_ASSIGN))])
 def assign_permission_to_role(
@@ -38,3 +38,4 @@ def assign_permission_to_role(
 ):
     """Assign a permission to a role."""
     return role_service.assign_permission_to_role(db=db, role_id=role_id, permission_id=permission_id)
+ssion_to_role(db=db, role_id=role_id, permission_id=permission_id)

@@ -4,17 +4,19 @@ from app.utils import deps
 from app.crud import permission as crud_permission
 from app.schemas.permission import Permission, PermissionCreate
 from app.core.constants import PermissionEnum
+from app.schemas.response import APIResponse
 
 router = APIRouter()
 
-@router.post("/", response_model=Permission, dependencies=[Depends(deps.require_permission(PermissionEnum.PERMISSION_CREATE))])
+@router.post("/", response_model=APIResponse[Permission], dependencies=[Depends(deps.require_permission(PermissionEnum.PERMISSION_CREATE))])
 def create_permission(
     *,
     db: Session = Depends(deps.get_db),
     permission_in: PermissionCreate
 ):
     """Create a new permission."""
-    return crud_permission.create(db=db, obj_in=permission_in)
+    new_permission = crud_permission.create(db=db, obj_in=permission_in)
+    return APIResponse(message="Permission created successfully", data=new_permission)
 
 @router.get("/{permission_id}", response_model=Permission, dependencies=[Depends(deps.require_permission(PermissionEnum.PERMISSION_READ))])
 def read_permission(
