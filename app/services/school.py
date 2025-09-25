@@ -3,7 +3,9 @@ from fastapi import HTTPException, status
 import secrets
 import string
 
-from app.crud import school as crud_school, user as crud_user, role as crud_role
+from app.crud.school import school as crud_school
+from app.crud.user import user as crud_user
+from app.crud.role import role as crud_role
 from app.schemas.school import SchoolCreate
 from app.schemas.user import UserCreate
 from app.models.school import School
@@ -37,11 +39,10 @@ class SchoolService:
             temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
             hashed_password = get_password_hash(temp_password)
 
-            admin_create_data = admin_in.model_dump()
-            admin_create_data['password'] = hashed_password
-            admin_user_in = UserCreate(**admin_create_data)
-
-            new_admin = crud_user.create(db, obj_in=admin_user_in, commit=False)
+            admin_create_data = admin_in.model_dump(exclude={'password'})
+            admin_create_data['hashed_password'] = hashed_password
+            
+            new_admin = crud_user.create(db, obj_in=admin_create_data, commit=False)
 
             crud_user.add_user_to_school(
                 db, user=new_admin, school=new_school, role=school_admin_role
@@ -70,8 +71,8 @@ class SchoolService:
             }
         )
         notification_service.create_notification(
-            db, 
-            user_id=new_admin.id, 
+            db,
+            user_id=new_admin.id,
             message=f"Welcome! Your school {new_school.name} has been created and you are the administrator.",
             notification_type="school_admin_account",
             link=f"/schools/{new_school.id}" # Example link
