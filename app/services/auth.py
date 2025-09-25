@@ -18,9 +18,9 @@ import string
 from app.services.email import EmailService
 
 class AuthService:
-    def login(self, db: Session, *, form_data: OAuth2PasswordRequestForm) -> LoginResponse:
-        user = crud_user.get_by_email(db, email=form_data.username)
-        if not user or not verify_password(form_data.password, user.hashed_password):
+    def login(self, db: Session, *, email: str, password: str) -> LoginResponse:
+        user = crud_user.get_by_email(db, email=email)
+        if not user or not verify_password(password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
@@ -65,7 +65,7 @@ class AuthService:
             "school_id": school_id,
             "role_id": role_id
         }
-        access_token = create_access_token(data=token_payload)
+        access_token = create_access_token(data=token_payload, email=user.email)
         return Token(access_token=access_token, token_type="bearer")
 
     def logout(self, db: Session, *, token: str) -> None:

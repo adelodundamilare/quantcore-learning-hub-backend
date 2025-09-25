@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.schemas.response import APIResponse
 from app.utils import deps
 from app.services.auth import auth_service
-from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, Token
+from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, Token, LoginRequest
+from app.schemas.response import APIResponse
 from app.models.user import User
 
 router = APIRouter()
@@ -15,13 +16,14 @@ class SelectContextRequest(BaseModel):
     school_id: int
     role_id: int
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=APIResponse[LoginResponse])
 def login_for_access_token(
-    db: Session = Depends(deps.get_db),
-    form_data: OAuth2PasswordRequestForm = Depends()
+    request: LoginRequest,
+    db: Session = Depends(deps.get_db)
 ):
     """Standard OAuth2 login, returns a token and available user contexts."""
-    return auth_service.login(db=db, form_data=form_data)
+    login_data = auth_service.login(db=db, email=request.email, password=request.password)
+    return APIResponse(message="Login successful", data=login_data)
 
 @router.post("/select-context", response_model=APIResponse[Token])
 def select_context(
