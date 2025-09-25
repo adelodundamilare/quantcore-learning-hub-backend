@@ -12,7 +12,29 @@ from app.crud.token_denylist import token_denylist as token_denylist_crud
 from app.schemas.token import TokenPayload
 from app.schemas.user import UserContext
 
+from app.schemas.token import TokenPayload
+from app.schemas.user import UserContext
+from app.core.constants import PermissionEnum
+
 http_bearer = HTTPBearer()
+
+def require_permission(permission_name: PermissionEnum):
+    """Dependency that checks if the current user has the required permission."""
+    def _verify_permission(context: UserContext = Depends(get_current_user_with_context)):
+        # Super Admin bypasses all checks
+        if context.role and context.role.name == "Super Admin":
+            return
+
+        if not context.role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User has no assigned role.")
+
+        user_permissions = {p.name for p in context.role.permissions}
+        if permission_name.value not in user_permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action."
+            )
+    return _verify_permission
 
 async def get_current_user(
     db: Session = Depends(get_db),

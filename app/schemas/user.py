@@ -1,9 +1,18 @@
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from typing import Optional, Any
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, model_validator
+from typing import Optional, Any, List
 
-class UserCreate(BaseModel):
+from .school import School
+from .role import Role
+from app.core.constants import RoleEnum
+
+class UserBase(BaseModel):
+    """Base user schema with common fields."""
     full_name: str
     email: EmailStr
+    avatar: Optional[str] = None
+
+class UserCreate(UserBase):
+    """Schema for creating a new user, includes password."""
     password: str
 
     @field_validator("password")
@@ -15,6 +24,7 @@ class UserCreate(BaseModel):
         return v
 
 class UserUpdate(BaseModel):
+    """Schema for updating a user's profile."""
     full_name: Optional[str] = None
     avatar: Optional[str] = None
 
@@ -31,13 +41,28 @@ class UserUpdate(BaseModel):
             raise ValueError("At least one field must be provided for update")
         return data
 
-class UserResponse(BaseModel):
+class User(UserBase):
+    """Main user schema for reading user data."""
     id: int
+    is_active: bool
+    is_verified: bool
+    auth_provider: str
+    model_config = ConfigDict(from_attributes=True)
+
+class UserContext(BaseModel):
+    """Represents a user's role within a specific school."""
+    school: School
+    role: Role
+    model_config = ConfigDict(from_attributes=True)
+
+class UserInvite(BaseModel):
+    """Schema for inviting a new user to a school."""
     full_name: str
     email: EmailStr
-    auth_provider: str
-    is_verified: bool
-    avatar: Optional[str]
+    role_name: RoleEnum
 
-    class Config:
-        from_attributes = True
+    @field_validator('role_name')
+    def validate_role(cls, v):
+        if v not in [RoleEnum.TEACHER, RoleEnum.STUDENT]:
+            raise ValueError("Users can only be invited as a Teacher or a Student.")
+        return v
