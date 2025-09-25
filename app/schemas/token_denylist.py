@@ -7,3 +7,9 @@ class TokenDenylistBase(BaseModel):
 
 class TokenDenylistCreate(TokenDenylistBase):
     pass
+
+class TokenDenylist(TokenDenylistBase):
+    id: int
+
+    class Config:
+        from_attributes = True

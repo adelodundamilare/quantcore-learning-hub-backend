@@ -3,6 +3,7 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from .config import settings
+import uuid
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -18,6 +19,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    
+    to_encode.update({
+        "exp": expire,
+        "jti": str(uuid.uuid4()),
+        "sub": str(to_encode.get("user_id")) # Add user_id as subject
+    })
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt
