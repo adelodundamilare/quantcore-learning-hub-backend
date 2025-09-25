@@ -79,7 +79,7 @@ def forgot_password(
     request: ForgotPasswordRequest
 ):
     """Request a password reset link to be sent to the user's email."""
-    auth_service.request_password_reset(db=db, email=request.email)
+    auth_service.request_password_reset(db=db, email=request.email, frontend_base_url=request.frontend_base_url)
     return APIResponse(message="Password reset link sent if email exists")
 @router.post("/reset-password", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
 def reset_password(

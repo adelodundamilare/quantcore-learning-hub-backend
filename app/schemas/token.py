@@ -23,6 +23,7 @@ class LoginResponse(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+    frontend_base_url: str
 
 class ResetPasswordRequest(BaseModel):
     token: str
