@@ -13,7 +13,7 @@ router = APIRouter()
 @router.get("/", response_model=List[Notification])
 def get_my_notifications(
     db: Session = Depends(deps.get_db),
-    context: UserContext = Depends(deps.get_current_user_with_context),
+    context: UserContext = Depends(deps.get_current_user),
     skip: int = 0,
     limit: int = 100
 ):
@@ -23,7 +23,7 @@ def get_my_notifications(
 @router.get("/unread_count", response_model=int)
 def get_unread_notifications_count(
     db: Session = Depends(deps.get_db),
-    context: UserContext = Depends(deps.get_current_user_with_context)
+    context: UserContext = Depends(deps.get_current_user)
 ):
     """Get the count of unread notifications for the current user."""
     return notification_service.get_unread_count(db, user_id=context.user.id)
@@ -32,7 +32,7 @@ def get_unread_notifications_count(
 def mark_notification_as_read(
     notification_id: int,
     db: Session = Depends(deps.get_db),
-    context: UserContext = Depends(deps.get_current_user_with_context)
+    context: UserContext = Depends(deps.get_current_user)
 ):
     """Mark a specific notification as read."""
     notification = notification_service.mark_notification_as_read(db, notification_id=notification_id)
@@ -43,7 +43,7 @@ def mark_notification_as_read(
 @router.post("/mark_all_read",response_model=APIResponse[None])
 def mark_all_notifications_as_read(
     db: Session = Depends(deps.get_transactional_db),
-    context: UserContext = Depends(deps.get_current_user_with_context)
+    context: UserContext = Depends(deps.get_current_user)
 ):
     """Mark all unread notifications for the current user as read."""
     notification_service.mark_all_notifications_as_read(db, user_id=context.user.id)

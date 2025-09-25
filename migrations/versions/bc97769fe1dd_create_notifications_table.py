@@ -36,6 +36,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(op.f('ix_notifications_user_id'), table_name='notifications')
-    op.drop_index(op.f('ix_notifications_id'), table_name='notifications')
-    op.drop_table('notifications')
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if 'notifications' in inspector.get_table_names():
+        op.drop_table('notifications')
