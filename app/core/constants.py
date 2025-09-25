@@ -30,4 +30,6 @@ class PermissionEnum(str, Enum):
 
     # Permission Permissions
     PERMISSION_ASSIGN = "permission:assign"
+    PERMISSION_CREATE = "permission:create"
+    PERMISSION_READ = "permission:read"
 
