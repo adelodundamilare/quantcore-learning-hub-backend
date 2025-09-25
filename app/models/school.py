@@ -1,0 +1,17 @@
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
+from app.core.database import Base
+from app.models.user_school_association import user_school_association
+
+class School(Base):
+    __tablename__ = "schools"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    # Add other school-specific fields here
+
+    users = relationship(
+        "User",
+        secondary=user_school_association,
+        back_populates="schools"
+    )
