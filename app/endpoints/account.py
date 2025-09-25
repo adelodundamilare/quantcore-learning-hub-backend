@@ -14,6 +14,8 @@ from app.schemas.user import User, UserUpdate, UserInvite
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
 from app.services.auth import auth_service
+from app.schemas.response import APIResponse
+from app.core.constants import RoleEnum
 
 logger = setup_logger("account_api", "account.log")
 
@@ -47,11 +49,35 @@ def invite_user(
             detail="You must have a school context to invite users."
         )
 
-    # Add permission check here, e.g., if context.role.name != RoleEnum.SCHOOL_ADMIN:
+    # Permission check based on inviting user's role
+    inviting_role = context.role.name
+    invited_role = invite_in.role_name
 
-    return user_service.invite_user(
+    # Super Admin bypasses all invitation restrictions
+    if inviting_role == RoleEnum.SUPER_ADMIN:
+        pass # Super Admin can invite anyone
+    elif inviting_role == RoleEnum.SCHOOL_ADMIN:
+        if invited_role not in [RoleEnum.TEACHER, RoleEnum.STUDENT]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="School Admins can only invite Teachers or Students."
+            )
+    elif inviting_role == RoleEnum.TEACHER:
+        if invited_role != RoleEnum.STUDENT:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teachers can only invite Students."
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your role does not have permission to invite users."
+        )
+
+    invited_user = user_service.invite_user(
         db, invited_by=context.user, school=context.school, invite_in=invite_in
     )
+    return APIResponse(message="User invited successfully", data=User.model_validate(invited_user))
 
 @router.post("/me/change-password", response_model=APIResponse[None])
 async def change_password(

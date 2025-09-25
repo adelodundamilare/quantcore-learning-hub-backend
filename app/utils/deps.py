@@ -17,10 +17,8 @@ from app.schemas.user import UserContext
 from app.core.constants import PermissionEnum
 
 from app.crud.token_denylist import token_denylist as token_denylist_crud
-from app.crud import school as crud_school, role as crud_role
 from app.schemas.token import TokenPayload
 from app.schemas.user import UserContext
-from pydantic import BaseModel
 
 http_bearer = HTTPBearer()
 
