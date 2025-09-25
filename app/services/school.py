@@ -80,7 +80,7 @@ class SchoolService:
 
         EmailService.send_email(
             to_email=new_admin.email,
-            subject=f"Welcome to {new_school.name}! Verify Your Account",
+            subject=f"Welcome! Verify Your Account",
             template_name="verify_account.html", # New template
             template_context={
                 'user_name': new_admin.full_name,
