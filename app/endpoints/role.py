@@ -9,10 +9,10 @@ from app.core.constants import PermissionEnum
 
 router = APIRouter()
 
-@router.post("/", response_model=Role, dependencies=[Depends(deps.require_permission(PermissionEnum.ROLE_CREATE))])
+@router.post("/", response_model=APIResponse[Role], dependencies=[Depends(deps.require_permission(PermissionEnum.ROLE_CREATE))])
 def create_role(
-    *,
-    db: Session = Depends(deps.get_db),
+    *, 
+    db: Session = Depends(deps.get_transactional_db), 
     role_in: RoleCreate
 ):
     """Create a new role."""

@@ -40,11 +40,11 @@ def mark_notification_as_read(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found or not authorized")
     return APIResponse(message="Notification marked as read", data=notification)
 
-@router.post("/mark_all_read", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/mark_all_read",response_model=APIResponse[None])
 def mark_all_notifications_as_read(
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     """Mark all unread notifications for the current user as read."""
     notification_service.mark_all_notifications_as_read(db, user_id=context.user.id)
-    return
+    return APIResponse(message="All notifications marked as read")

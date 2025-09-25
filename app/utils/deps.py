@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.crud.user import user as user_crud
 from app.crud.school import school as crud_school
 from app.crud.role import role as crud_role
@@ -16,7 +16,31 @@ from app.schemas.token import TokenPayload
 from app.schemas.user import UserContext
 from app.core.constants import PermissionEnum
 
+from app.crud.token_denylist import token_denylist as token_denylist_crud
+from app.crud import school as crud_school, role as crud_role
+from app.schemas.token import TokenPayload
+from app.schemas.user import UserContext
+from pydantic import BaseModel
+
 http_bearer = HTTPBearer()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_transactional_db():
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 def require_permission(permission_name: PermissionEnum):
     """Dependency that checks if the current user has the required permission."""

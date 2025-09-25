@@ -8,10 +8,10 @@ from app.core.constants import PermissionEnum
 
 router = APIRouter()
 
-@router.post("/", response_model=School, dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
+@router.post("/", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
 def create_school(
-    *,
-    db: Session = Depends(deps.get_db),
+    *, 
+    db: Session = Depends(deps.get_transactional_db), 
     school_in: SchoolCreate
 ):
     """Create a new school."""

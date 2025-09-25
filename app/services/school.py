@@ -71,7 +71,6 @@ class SchoolService:
                 commit=False
             )
 
-            db.commit()
         except Exception as e:
             db.rollback()
             raise HTTPException(
@@ -97,5 +96,4 @@ class SchoolService:
         )
 
         return new_school
-
 school_service = SchoolService()

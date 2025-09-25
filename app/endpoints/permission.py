@@ -11,7 +11,7 @@ router = APIRouter()
 @router.post("/", response_model=APIResponse[Permission], dependencies=[Depends(deps.require_permission(PermissionEnum.PERMISSION_CREATE))])
 def create_permission(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_transactional_db),
     permission_in: PermissionCreate
 ):
     """Create a new permission."""

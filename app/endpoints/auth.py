@@ -63,24 +63,24 @@ def select_context(
         role_id=context_request.role_id
     )
     return APIResponse(message="Context selected successfully", data=Token.model_validate(token_data))
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/logout", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
 def logout(
     db: Session = Depends(deps.get_db),
     credentials: HTTPAuthorizationCredentials = Depends(deps.http_bearer)
 ):
     """Invalidate the current access token by adding it to the denylist."""
     auth_service.logout(db=db, token=credentials.credentials)
-    return
+    return APIResponse(message="Logout successful")
 
-@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+@router.post("/forgot-password", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
 def forgot_password(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_transactional_db),
     request: ForgotPasswordRequest
 ):
     """Request a password reset link to be sent to the user's email."""
     auth_service.request_password_reset(db=db, email=request.email)
-    return {"message": "Password reset link sent if email exists"}
+    return APIResponse(message="Password reset link sent if email exists")
 @router.post("/reset-password", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
 def reset_password(
     *,

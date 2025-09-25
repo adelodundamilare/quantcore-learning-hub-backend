@@ -19,14 +19,14 @@ logger = setup_logger("account_api", "account.log")
 
 router = APIRouter()
 
-@router.get("/me", response_model=User)
+@router.get("/me", response_model=APIResponse[User])
 def read_users_me(current_user: User = Depends(deps.get_current_user)):
-    return current_user
+    return APIResponse(message="User profile fetched successfully", data=User.model_validate(current_user))
 
-@router.put("/me", response_model=User)
+@router.put("/me", response_model=APIResponse[User])
 def update_user_me(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_transactional_db),
     user_in: UserUpdate,
     current_user: User = Depends(deps.get_current_user)
 ):

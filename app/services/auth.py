@@ -99,7 +99,6 @@ class AuthService:
                 "expires_at": expires_at,
             },
         )
-        db.commit()
 
         reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token_value}"
         EmailService.send_email(
@@ -119,10 +118,10 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
         user.hashed_password = get_password_hash(new_password)
-        crud_user.update(db, db_obj=user, obj_in=user)
+        crud_user_instance.update(db, db_obj=user)
 
         crud_one_time_token.delete_by_token_value(db, token=token, token_type=TokenType.PASSWORD_RESET)
-        db.commit()
+
 
     def verify_account(self, db: Session, *, email: str, code: str) -> None:
         user = crud_user.get_by_email(db, email=email)
@@ -136,9 +135,9 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code.")
 
         user.is_active = True
-        crud_user.update(db, db_obj=user, obj_in=user)
+        crud_user.update(db, db_obj=user)
         crud_one_time_token.delete_by_token_value(db, token=code, token_type=TokenType.ACCOUNT_VERIFICATION)
-        db.commit()
+
 
         notification_service.create_notification(
             db,
