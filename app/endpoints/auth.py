@@ -3,10 +3,14 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from app.services.school import school_service
+from app.models.school import School
 from app.schemas.response import APIResponse
+from app.schemas.school import SchoolCreate
+from app.schemas.user import UserCreate
 from app.utils import deps
 from app.services.auth import auth_service
-from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, Token, LoginRequest
+from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResendVerificationRequest, ResetPasswordRequest, Token, LoginRequest, VerifyAccountRequest
 from app.schemas.response import APIResponse
 from app.models.user import User
 
@@ -15,6 +19,24 @@ router = APIRouter()
 class SelectContextRequest(BaseModel):
     school_id: int
     role_id: int
+
+class SchoolSignupRequest(BaseModel):
+    school: SchoolCreate
+    admin: UserCreate
+
+@router.post("/school", response_model=APIResponse[School])
+def school_signup(
+    *,
+    db: Session = Depends(deps.get_db),
+    signup_request: SchoolSignupRequest
+):
+    """Handles the creation of a new school and its administrator."""
+    new_school = school_service.create_school_and_admin(
+        db=db,
+        school_in=signup_request.school,
+        admin_in=signup_request.admin
+    )
+    return APIResponse(message="School and admin created successfully", data=new_school)
 
 @router.post("/login", response_model=APIResponse[LoginResponse])
 def login_for_access_token(
@@ -68,3 +90,23 @@ def reset_password(
     """Reset user's password using a valid reset token."""
     auth_service.reset_password(db=db, token=request.token, new_password=request.new_password)
     return
+
+@router.post("/verify-account", response_model=APIResponse[None])
+def verify_account(
+    *,
+    db: Session = Depends(deps.get_db),
+    request: VerifyAccountRequest
+):
+    """Verify user account with a 4-digit code."""
+    auth_service.verify_account(db=db, email=request.email, code=request.code)
+    return APIResponse(message="Account verified successfully")
+
+@router.post("/resend-verification", response_model=APIResponse[None])
+def resend_verification_code(
+    *,
+    db: Session = Depends(deps.get_db),
+    request: ResendVerificationRequest
+):
+    """Resend account verification code to the user's email."""
+    auth_service.resend_verification_code(db=db, email=request.email)
+    return APIResponse(message="Verification code resent if account is not verified")

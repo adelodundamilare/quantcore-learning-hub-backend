@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 import secrets
 import string
+from app.core.config import settings
 
 from app.crud.school import school as crud_school
 from app.crud.user import user as crud_user
@@ -13,6 +15,9 @@ from app.core.security import get_password_hash
 from app.core.constants import RoleEnum
 from app.services.email import EmailService
 from app.services.notification import notification_service
+from app.crud.one_time_token import one_time_token as crud_one_time_token
+from app.models.one_time_token import TokenType
+import random
 
 class SchoolService:
     """Service layer for school-related business logic."""
@@ -41,11 +46,27 @@ class SchoolService:
 
             admin_create_data = admin_in.model_dump(exclude={'password'})
             admin_create_data['hashed_password'] = hashed_password
-            
+            admin_create_data['is_verified'] = False # Admin is not verified initially
+
             new_admin = crud_user.create(db, obj_in=admin_create_data, commit=False)
 
             crud_user.add_user_to_school(
                 db, user=new_admin, school=new_school, role=school_admin_role
+            )
+
+            # Generate and store verification code
+            verification_code = str(random.randint(1000, 9999))
+            expires_at = datetime.utcnow() + timedelta(minutes=settings.VERIFICATION_CODE_EXPIRE_MINUTES)
+
+            crud_one_time_token.create(
+                db,
+                obj_in={
+                    "user_id": new_admin.id,
+                    "token": verification_code,
+                    "token_type": TokenType.ACCOUNT_VERIFICATION,
+                    "expires_at": expires_at,
+                },
+                commit=False
             )
 
             db.commit()
@@ -56,26 +77,21 @@ class SchoolService:
                 detail=f"An error occurred during the signup process: {e}",
             )
 
-        db.refresh(new_school)
-
         EmailService.send_email(
             to_email=new_admin.email,
-            subject=f"Welcome to {new_school.name}! Your Admin Account Details",
-            template_name="new_account_invite.html",
+            subject=f"Welcome to {new_school.name}! Verify Your Account",
+            template_name="verify_account.html", # New template
             template_context={
                 'user_name': new_admin.full_name,
-                'school_name': new_school.name,
-                'role_name': school_admin_role.name,
-                'password': temp_password,
-                'email': new_admin.email
+                'verification_code': verification_code
             }
         )
         notification_service.create_notification(
             db,
             user_id=new_admin.id,
-            message=f"Welcome! Your school {new_school.name} has been created and you are the administrator.",
-            notification_type="school_admin_account",
-            link=f"/schools/{new_school.id}" # Example link
+            message=f"Welcome! Your school {new_school.name} has been created. Please verify your account.",
+            notification_type="account_verification",
+            link=f"/verify-account" # Example link
         )
 
         return new_school

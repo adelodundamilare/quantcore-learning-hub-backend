@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Account Verification</h1>
+<p>Dear {{ user_name }},</p>
+<p>Thank you for signing up! To verify your account, please use the following 4-digit code:</p>
+
+<div style="text-align: center; margin: 30px 0">
+  <h2 style="letter-spacing: 5px; font-size: 32px">{{ verification_code }}</h2>
+</div>
+
+<p>This code will expire shortly. If you did not sign up for an account, please ignore this email.</p>
+
+<p>Best regards,</p>
+<p>The {{ company_name }} Team</p>
+{% endblock %}

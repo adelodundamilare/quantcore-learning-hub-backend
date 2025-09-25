@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, utility, school, role, permission, signup, notification
+from app.endpoints import auth, account, utility, school, role, permission, notification
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
 
@@ -26,7 +26,6 @@ app.add_exception_handler(Exception, global_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # Include routers
-app.include_router(signup.router, prefix="/signup", tags=["Signup"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(school.router, prefix="/schools", tags=["Schools"])
 app.include_router(account.router, prefix="/account", tags=["account"])

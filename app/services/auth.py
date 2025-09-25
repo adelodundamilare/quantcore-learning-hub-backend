@@ -1,10 +1,9 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
 
 from app.crud import user as crud_user
 from app.core.security import get_password_hash, verify_password, create_access_token
-from app.schemas.token import LoginResponse, Token, TokenPayload, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.token import LoginResponse, Token, TokenPayload
 from app.schemas.token_denylist import TokenDenylistCreate
 from app.models.user import User
 from app.models.one_time_token import TokenType
@@ -15,7 +14,9 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import secrets
 import string
+import random
 from app.services.email import EmailService
+from app.services.notification import notification_service
 
 class AuthService:
     def login(self, db: Session, *, email: str, password: str) -> LoginResponse:
@@ -38,7 +39,7 @@ class AuthService:
         else:
             token_payload = {"user_id": user.id}
 
-        access_token = create_access_token(data=token_payload)
+        access_token = create_access_token(data=token_payload, email=user.email)
 
         return LoginResponse(
             token=Token(access_token=access_token, token_type="bearer"),
@@ -122,5 +123,58 @@ class AuthService:
 
         crud_one_time_token.delete_by_token_value(db, token=token, token_type=TokenType.PASSWORD_RESET)
         db.commit()
+
+    def verify_account(self, db: Session, *, email: str, code: str) -> None:
+        user = crud_user.get_by_email(db, email=email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+        if user.is_verified:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account already verified.")
+
+        verification_token = crud_one_time_token.get_by_token_value(db, token=code, token_type=TokenType.ACCOUNT_VERIFICATION)
+        if not verification_token or verification_token.user_id != user.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code.")
+
+        user.is_verified = True
+        crud_user.update(db, db_obj=user, obj_in=user)
+        crud_one_time_token.delete_by_token_value(db, token=code, token_type=TokenType.ACCOUNT_VERIFICATION)
+        db.commit()
+
+        notification_service.create_notification(
+            db,
+            user_id=user.id,
+            message="Your account has been successfully verified!",
+            notification_type="account_verified"
+        )
+
+    def resend_verification_code(self, db: Session, *, email: str) -> None:
+        user = crud_user.get_by_email(db, email=email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+        if user.is_verified:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account already verified.")
+
+        crud_one_time_token.delete_by_user_id_and_type(db, user_id=user.id, token_type=TokenType.ACCOUNT_VERIFICATION)
+
+        verification_code = str(random.randint(1000, 9999))
+        expires_at = datetime.utcnow() + timedelta(minutes=settings.VERIFICATION_CODE_EXPIRE_MINUTES)
+
+        crud_one_time_token.create(
+            db,
+            obj_in={
+                "user_id": user.id,
+                "token": verification_code,
+                "token_type": TokenType.ACCOUNT_VERIFICATION,
+                "expires_at": expires_at,
+            },
+        )
+        db.commit()
+
+        EmailService.send_email(
+            to_email=user.email,
+            subject="Resend Account Verification Code",
+            template_name="verify_account.html",
+            template_context={'user_name': user.full_name, 'verification_code': verification_code}
+        )
 
 auth_service = AuthService()
