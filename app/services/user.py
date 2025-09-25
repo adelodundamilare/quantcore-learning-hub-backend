@@ -67,7 +67,6 @@ class UserService:
                     detail=f"An error occurred during the invitation process: {e}",
                 )
 
-            db.refresh(new_user)
             EmailService.send_email(
                 to_email=new_user.email,
                 subject=f"Welcome to {school.name}! Your Invitation Details",

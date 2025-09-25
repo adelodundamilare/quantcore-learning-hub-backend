@@ -47,9 +47,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         obj_in_data = jsonable_encoder(obj_in)
         db_obj = self.model(**obj_in_data)
         db.add(db_obj)
+        db.flush() # Populate ID
+        db.refresh(db_obj) # Refresh to get ID and other defaults
         if commit:
             db.commit()
-            db.refresh(db_obj)
         return db_obj
 
     def update(
