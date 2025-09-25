@@ -33,3 +33,12 @@ class PermissionEnum(str, Enum):
     PERMISSION_CREATE = "permission:create"
     PERMISSION_READ = "permission:read"
 
+    # User Management Permissions
+    USER_INVITE = "user:invite"
+    USER_MANAGE_ROLES = "user:manage_roles"
+    USER_MANAGE_SCHOOLS = "user:manage_schools"
+
+    # Other potential permissions
+    # ASSIGNMENT_CREATE = "assignment:create"
+    # COURSE_CREATE = "course:create"
+
