@@ -14,13 +14,6 @@ class User(Base):
     avatar = Column(String, nullable=True)
     is_active = Column(Boolean(), default=True)
     auth_provider = Column(String, default="email")  # email, google, apple
-    
-    # Verification and reset fields
-    reset_code = Column(String, nullable=True)
-    reset_code_expires_at = Column(DateTime, nullable=True)
-    verification_code = Column(String, nullable=True)
-    verification_code_expires_at = Column(DateTime, nullable=True)
-    is_verified = Column(Boolean(), default=False)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

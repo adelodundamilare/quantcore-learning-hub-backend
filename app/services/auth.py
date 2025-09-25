@@ -1,44 +1,64 @@
+from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-import random
-import string
-from app.services.user import UserService
-from datetime import datetime, timedelta
-from app.core.security import pwd_context
+from fastapi.security import OAuth2PasswordRequestForm
 
-user_service = UserService()
+from app.crud import user as crud_user
+from app.core.security import verify_password, create_access_token
+from app.schemas.token import LoginResponse, Token
+from app.models.user import User
 
 class AuthService:
-    def generate_code(self):
-        return ''.join(random.choices(string.digits, k=4))
+    def login(self, db: Session, *, form_data: OAuth2PasswordRequestForm) -> LoginResponse:
+        user = crud_user.get_by_email(db, email=form_data.username)
+        if not user or not verify_password(form_data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+            )
+        
+        contexts = crud_user.get_user_contexts(db, user_id=user.id)
+        
+        if len(contexts) == 1:
+            # Auto-select context for single-school users
+            context = contexts[0]
+            token_payload = {
+                "user_id": user.id,
+                "school_id": context['school'].id,
+                "role_id": context['role'].id
+            }
+        else:
+            # Requires context selection for multi-school users or users with no school
+            token_payload = {"user_id": user.id}
 
-    def request_forget_password(self, db, user):
-        reset_code =  self.generate_code()
-        user_service.update_user(db, user, user_data={
-            "reset_code": reset_code,
-            "reset_code_expires_at": datetime.utcnow()+ timedelta(minutes=30)
-        })
-        return reset_code
+        access_token = create_access_token(data=token_payload)
+        
+        return LoginResponse(
+            token=Token(access_token=access_token, token_type="bearer"),
+            contexts=contexts
+        )
 
-    def change_password_via_code(self, db, user, reset_data):
-        if (user.reset_code != reset_data.code or
-           user.reset_code_expires_at is None or
-           user.reset_code_expires_at < datetime.utcnow()
-        ):
-           raise HTTPException(
-               status_code=status.HTTP_401_UNAUTHORIZED,
-               detail="Invalid or expired reset code"
-           )
+    def select_context(
+        self, db: Session, *, user: User, school_id: int, role_id: int
+    ) -> Token:
+        contexts = crud_user.get_user_contexts(db, user_id=user.id)
+        
+        # Verify the user actually belongs to the requested context
+        is_valid_context = any(
+            c['school'].id == school_id and c['role'].id == role_id for c in contexts
+        )
 
-        hashed_password = pwd_context.hash(reset_data.new_password)
+        if not is_valid_context:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to the specified context."
+            )
 
-        user_service.update_user(db, user, {
-           "hashed_password": hashed_password,
-       })
+        token_payload = {
+            "user_id": user.id,
+            "school_id": school_id,
+            "role_id": role_id
+        }
+        access_token = create_access_token(data=token_payload)
+        return Token(access_token=access_token, token_type="bearer")
 
-        user_service.update_user(db, user, {
-           "reset_code": None,
-           "reset_code_expires_at": None
-       })
-
-    def verify_password(self, plain_password, hashed_password):
-        return pwd_context.verify(plain_password, hashed_password)
+auth_service = AuthService()
