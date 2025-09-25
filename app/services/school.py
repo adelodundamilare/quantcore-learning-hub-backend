@@ -41,8 +41,8 @@ class SchoolService:
         try:
             new_school = crud_school.create(db, obj_in=school_in, commit=False)
 
-            temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
-            hashed_password = get_password_hash(temp_password)
+            # temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
+            hashed_password = get_password_hash(admin_in.password)
 
             admin_create_data = {
                 "full_name": admin_in.full_name,
