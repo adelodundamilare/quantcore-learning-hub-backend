@@ -28,4 +28,4 @@ def read_permission(
     permission = crud_permission.get(db=db, id=permission_id)
     if not permission:
         raise HTTPException(status_code=404, detail="Permission not found")
-    return permission
+    return APIResponse(message="Permission retrieved successfully", data=Permission.model_validate(permission))

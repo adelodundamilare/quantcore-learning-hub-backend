@@ -30,7 +30,8 @@ def update_user_me(
     user_in: UserUpdate,
     current_user: User = Depends(deps.get_current_user)
 ):
-    return user_crud.update(db, db_obj=current_user, obj_in=user_in)
+    updated_user = user_crud.update(db, db_obj=current_user, obj_in=user_in)
+    return APIResponse(message="User profile updated successfully", data=User.model_validate(updated_user))
 
 @router.post("/invite", response_model=User)
 def invite_user(

@@ -16,7 +16,8 @@ def create_role(
     role_in: RoleCreate
 ):
     """Create a new role."""
-    return crud_role.create(db=db, obj_in=role_in)
+    new_role = crud_role.create(db=db, obj_in=role_in)
+    return APIResponse(message="Role created successfully", data=Role.model_validate(new_role))
 
 @router.get("/{role_id}", response_model=APIResponse[Role])
 def read_role(

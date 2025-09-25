@@ -18,6 +18,8 @@ class LoginResponse(BaseModel):
     """Response for the login endpoint."""
     token: Token
     contexts: List[UserContext] = []
+    class Config:
+        from_attributes = True
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr

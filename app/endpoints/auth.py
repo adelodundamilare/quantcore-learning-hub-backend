@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.services.school import school_service
 
 from app.schemas.response import APIResponse
-from app.schemas.school import SchoolCreate
+from app.schemas.school import School, SchoolCreate
 from app.schemas.user import UserCreate
 from app.utils import deps
 from app.services.auth import auth_service
@@ -25,7 +25,7 @@ class SchoolSignupRequest(BaseModel):
     school: SchoolCreate
     admin: UserCreate
 
-@router.post("/school", response_model=APIResponse[Any])
+@router.post("/signup-school", response_model=APIResponse[School])
 def school_signup(
     *,
     db: Session = Depends(deps.get_db),
@@ -37,7 +37,7 @@ def school_signup(
         school_in=signup_request.school,
         admin_in=signup_request.admin
     )
-    return APIResponse(message="School and admin created successfully", data=new_school)
+    return APIResponse(message="School and admin created successfully", data=School.model_validate(new_school))
 
 @router.post("/login", response_model=APIResponse[LoginResponse])
 def login_for_access_token(
@@ -62,8 +62,7 @@ def select_context(
         school_id=context_request.school_id,
         role_id=context_request.role_id
     )
-    return APIResponse(message="Context selected successfully", data=token_data)
-
+    return APIResponse(message="Context selected successfully", data=Token.model_validate(token_data))
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     db: Session = Depends(deps.get_db),
@@ -82,7 +81,7 @@ def forgot_password(
     """Request a password reset link to be sent to the user's email."""
     auth_service.request_password_reset(db=db, email=request.email)
     return {"message": "Password reset link sent if email exists"}
-@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/reset-password", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
 def reset_password(
     *,
     db: Session = Depends(deps.get_db),
@@ -90,7 +89,7 @@ def reset_password(
 ):
     """Reset user's password using a valid reset token."""
     auth_service.reset_password(db=db, token=request.token, new_password=request.new_password)
-    return
+    return APIResponse(message="Password has been reset successfully")
 
 @router.post("/verify-account", response_model=APIResponse[None])
 def verify_account(

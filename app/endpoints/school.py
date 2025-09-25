@@ -15,7 +15,8 @@ def create_school(
     school_in: SchoolCreate
 ):
     """Create a new school."""
-    return crud_school.create(db=db, obj_in=school_in)
+    new_school = crud_school.create(db=db, obj_in=school_in)
+    return APIResponse(message="School created successfully", data=School.model_validate(new_school))
 
 @router.get("/{school_id}", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_READ))])
 def read_school(
