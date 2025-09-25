@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.utils import deps
 from app.services.school import school_service
@@ -15,14 +15,14 @@ router = APIRouter()
 
 @router.post("/school", response_model=APIResponse[School])
 def school_signup(
-    *, 
-    db: Session = Depends(deps.get_db), 
+    *,
+    db: Session = Depends(deps.get_db),
     signup_request: SchoolSignupRequest
 ):
     """Handles the creation of a new school and its administrator."""
     new_school = school_service.create_school_and_admin(
-        db=db, 
-        school_in=signup_request.school, 
+        db=db,
+        school_in=signup_request.school,
         admin_in=signup_request.admin
     )
     return APIResponse(message="School and admin created successfully", data=new_school)

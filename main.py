@@ -26,14 +26,16 @@ app.add_exception_handler(Exception, global_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # Include routers
+app.include_router(signup.router, prefix="/signup", tags=["Signup"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(school.router, prefix="/schools", tags=["Schools"])
 app.include_router(account.router, prefix="/account", tags=["account"])
-app.include_router(utility.router, prefix="/utility", tags=["utility"])
+app.include_router(notification.router, prefix="/notifications", tags=["Notifications"])
 
 # Routers for new models
-app.include_router(school.router, prefix="/schools", tags=["Schools"])
 app.include_router(role.router, prefix="/roles", tags=["Roles"])
 app.include_router(permission.router, prefix="/permissions", tags=["Permissions"])
+app.include_router(utility.router, prefix="/utility", tags=["utility"])
 
 if __name__ == "__main__":
     import uvicorn
