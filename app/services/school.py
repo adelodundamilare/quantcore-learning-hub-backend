@@ -44,12 +44,14 @@ class SchoolService:
             temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
             hashed_password = get_password_hash(temp_password)
 
-            admin_create_data = admin_in.model_dump(exclude={'password'})
-            admin_create_data['hashed_password'] = hashed_password
-            admin_create_data['is_verified'] = False # Admin is not verified initially
+            admin_create_data = {
+                "full_name": admin_in.full_name,
+                "email": admin_in.email,
+                "hashed_password": hashed_password,
+                "is_active": False # Admin is not active until verified
+            }
 
             new_admin = crud_user.create(db, obj_in=admin_create_data, commit=False)
-
             crud_user.add_user_to_school(
                 db, user=new_admin, school=new_school, role=school_admin_role
             )

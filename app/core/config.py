@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     DATABASE_NAME: str
 
     DATABASE_URL: str = ""
+    VERIFICATION_CODE_EXPIRE_MINUTES: int = 10
 
     def __init__(self, **data):
         super().__init__(**data)

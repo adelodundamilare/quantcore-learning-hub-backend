@@ -1,10 +1,11 @@
+from typing import Any
 from fastapi import APIRouter, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.services.school import school_service
-from app.models.school import School
+
 from app.schemas.response import APIResponse
 from app.schemas.school import SchoolCreate
 from app.schemas.user import UserCreate
@@ -24,7 +25,7 @@ class SchoolSignupRequest(BaseModel):
     school: SchoolCreate
     admin: UserCreate
 
-@router.post("/school", response_model=APIResponse[School])
+@router.post("/school", response_model=APIResponse[Any])
 def school_signup(
     *,
     db: Session = Depends(deps.get_db),

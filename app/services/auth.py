@@ -128,14 +128,14 @@ class AuthService:
         user = crud_user.get_by_email(db, email=email)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-        if user.is_verified:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account already verified.")
+        if user.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account already active.")
 
         verification_token = crud_one_time_token.get_by_token_value(db, token=code, token_type=TokenType.ACCOUNT_VERIFICATION)
         if not verification_token or verification_token.user_id != user.id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code.")
 
-        user.is_verified = True
+        user.is_active = True
         crud_user.update(db, db_obj=user, obj_in=user)
         crud_one_time_token.delete_by_token_value(db, token=code, token_type=TokenType.ACCOUNT_VERIFICATION)
         db.commit()
