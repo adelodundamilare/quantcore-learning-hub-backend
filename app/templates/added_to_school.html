@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Welcome to {{ school_name }}!</h1>
+<p>Dear {{ user_name }},</p>
+<p>You have been added to <strong>{{ school_name }}</strong> as a <strong>{{ role_name }}</strong>.</p>
+<p>You can now log in to access your new account features.</p>
+<p>If you have any questions, please don't hesitate to contact support.</p>
+<p>Best regards,</p>
+<p>The {{ company_name }} Team</p>
+{% endblock %}

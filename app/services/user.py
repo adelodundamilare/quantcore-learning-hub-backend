@@ -1,108 +1,71 @@
+from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from app import schemas
-from app.crud.user import user as user_crud
-from app.core.security import pwd_context
-from .oauth import OAuthService
-from app.services.email import EmailService
-import string
 import secrets
+import string
 
-oauth_service = OAuthService()
+from app.crud import user as crud_user, role as crud_role
+from app.schemas.user import UserCreate, UserInvite
+from app.models.user import User
+from app.models.school import School
+from app.core.security import get_password_hash
+from app.services.email import EmailService
 
 class UserService:
-    def create_user(self, db, user_data):
-        if user_crud.get_by_email(db, email=user_data.email):
+    def invite_user(
+        self, db: Session, *, invited_by: User, school: School, invite_in: UserInvite
+    ) -> User:
+        """Invites a user to a school as a teacher or student."""
+        role_to_assign = crud_role.get_by_name(db, name=invite_in.role_name)
+        if not role_to_assign:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
-        return user_crud.create(db, obj_in=user_data)
-
-
-    async def get_or_create_google_user(self, db, token):
-        user_data = await oauth_service.verify_google_token(token)
-        if not user_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Google token"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Role '{invite_in.role_name}' not found. Please seed the database.",
             )
 
-        user = user_crud.get_by_email(db, email=user_data["email"])
-        if not user:
-            characters = string.ascii_letters + string.digits + string.punctuation
-            password = ''.join(secrets.choice(characters) for _ in range(8))
+        existing_user = crud_user.get_by_email(db, email=invite_in.email)
 
-            user = user_crud.create(
-                db,
-                obj_in=schemas.UserCreate(
-                    email=user_data["email"],
-                    full_name=user_data["name"],
-                    auth_provider="google",
-                    password=password
-                )
+        if existing_user:
+            crud_user.add_user_to_school(
+                db, user=existing_user, school=school, role=role_to_assign
             )
-
-            self.update_user(db, user, user_data={
-                "verification_code": None,
-                "verification_code_expires_at": None,
-                "is_verified": True
-            })
-
+            db.commit()
             EmailService.send_email(
-                to_email=user.email,
-                subject="Welcome",
-                template_name="welcome.html",
-                template_context={
-                    "name": user.full_name
-                }
+                to_email=existing_user.email,
+                subject=f"You've been added to {school.name}!",
+                template_name="added_to_school.html", # Placeholder template
+                template_context={'user_name': existing_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name}
+            )
+            return existing_user
+        else:
+            temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
+            hashed_password = get_password_hash(temp_password)
+            
+            user_in = UserCreate(
+                full_name=invite_in.full_name,
+                email=invite_in.email,
+                password=hashed_password
             )
 
-        return user
+            try:
+                new_user = crud_user.create(db, obj_in=user_in, commit=False)
+                crud_user.add_user_to_school(
+                    db, user=new_user, school=school, role=role_to_assign
+                )
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"An error occurred during the invitation process: {e}",
+                )
 
-    def update_user(self, db, user, user_data):
-        # should not change email or password
-        return user_crud.update(db, db_obj=user, obj_in=user_data)
+            db.refresh(new_user)
+            EmailService.send_email(
+                to_email=new_user.email,
+                subject=f"Welcome to {school.name}! Your Invitation Details",
+                template_name="new_account_invite.html", # Placeholder template
+                template_context={'user_name': new_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
+            )
+            return new_user
 
-    def find_user_by_email(self, db, email):
-        user = user_crud.get_by_email(db, email=email)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        return user
-
-    def change_password(self, db, user, old_password, new_password):
-        # Validate new_password
-        if not new_password or not new_password.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password cannot be empty or contain only whitespace."
-            )
-        if len(new_password) < 8:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password must be at least 8 characters long."
-            )
-        if new_password.isdigit() or new_password.isalpha():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password must contain both letters and numbers."
-            )
-        if new_password == old_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password must be different from the current password."
-            )
-
-        if not user_crud.authenticate(db, email=user.email, password=old_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Incorrect password"
-            )
-
-        self.update_user(
-            db,
-            user,
-            {"hashed_password": pwd_context.hash(new_password)}
-        )
+user_service = UserService()

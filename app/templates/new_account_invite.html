@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Welcome to {{ school_name }}!</h1>
+<p>Dear {{ user_name }},</p>
+<p>You have been invited to join <strong>{{ school_name }}</strong> as a <strong>{{ role_name }}</strong>.</p>
+<p>Your temporary password is: <strong>{{ password }}</strong></p>
+<p>Please log in using your email ({{ email }}) and this temporary password. We recommend changing your password after your first login for security reasons.</p>
+<p>If you have any questions, please don't hesitate to contact support.</p>
+<p>Best regards,</p>
+<p>The {{ company_name }} Team</p>
+{% endblock %}
