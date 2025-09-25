@@ -1,0 +1,40 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.utils import deps
+from app.crud import role as crud_role
+from app.schemas.role import Role, RoleCreate, RoleUpdate
+from app.services.role import role_service
+from app.core.constants import PermissionEnum
+
+router = APIRouter()
+
+@router.post("/", response_model=Role, dependencies=[Depends(deps.require_permission(PermissionEnum.ROLE_CREATE))])
+def create_role(
+    *, 
+    db: Session = Depends(deps.get_db), 
+    role_in: RoleCreate
+):
+    """Create a new role."""
+    return crud_role.create(db=db, obj_in=role_in)
+
+@router.get("/{role_id}", response_model=Role)
+def read_role(
+    *, 
+    db: Session = Depends(deps.get_db), 
+    role_id: int
+):
+    """Get a role by ID."""
+    role = crud_role.get(db=db, id=role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return role
+
+@router.post("/{role_id}/permissions/{permission_id}", response_model=Role, dependencies=[Depends(deps.require_permission(PermissionEnum.PERMISSION_ASSIGN))])
+def assign_permission_to_role(
+    *, 
+    db: Session = Depends(deps.get_db), 
+    role_id: int, 
+    permission_id: int
+):
+    """Assign a permission to a role."""
+    return role_service.assign_permission_to_role(db=db, role_id=role_id, permission_id=permission_id)

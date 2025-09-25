@@ -1,0 +1,29 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.utils import deps
+from app.crud import school as crud_school
+from app.schemas.school import School, SchoolCreate, SchoolUpdate
+from app.core.constants import PermissionEnum
+
+router = APIRouter()
+
+@router.post("/", response_model=School, dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
+def create_school(
+    *, 
+    db: Session = Depends(deps.get_db), 
+    school_in: SchoolCreate
+):
+    """Create a new school."""
+    return crud_school.create(db=db, obj_in=school_in)
+
+@router.get("/{school_id}", response_model=School, dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_READ))])
+def read_school(
+    *, 
+    db: Session = Depends(deps.get_db), 
+    school_id: int
+):
+    """Get a school by ID."""
+    school = crud_school.get(db=db, id=school_id)
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    return school
