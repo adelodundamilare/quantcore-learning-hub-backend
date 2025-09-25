@@ -3,6 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials, OAuth2PasswordRequest
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from app.schemas.response import APIResponse
 from app.utils import deps
 from app.services.auth import auth_service
 from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResetPasswordRequest, Token
@@ -14,7 +15,7 @@ class SelectContextRequest(BaseModel):
     school_id: int
     role_id: int
 
-@router.post("/token", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse)
 def login_for_access_token(
     db: Session = Depends(deps.get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
@@ -31,9 +32,9 @@ def select_context(
 ):
     """Exchange a basic token and a context choice for a scoped token."""
     token_data = auth_service.select_context(
-        db=db, 
-        user=current_user, 
-        school_id=context_request.school_id, 
+        db=db,
+        user=current_user,
+        school_id=context_request.school_id,
         role_id=context_request.role_id
     )
     return APIResponse(message="Context selected successfully", data=token_data)
@@ -49,7 +50,7 @@ def logout(
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
 def forgot_password(
-    *, 
+    *,
     db: Session = Depends(deps.get_db),
     request: ForgotPasswordRequest
 ):

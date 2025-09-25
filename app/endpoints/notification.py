@@ -32,7 +32,7 @@ def get_unread_notifications_count(
 def mark_notification_as_read(
     notification_id: int,
     db: Session = Depends(deps.get_db),
-    context: UserContext = Depends(deps.get_current_active_user_with_context)
+    context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     """Mark a specific notification as read."""
     notification = notification_service.mark_notification_as_read(db, notification_id=notification_id)

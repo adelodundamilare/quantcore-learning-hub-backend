@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from app.schemas.response import APIResponse
 from app.utils import deps
 from app.crud import school as crud_school
 from app.schemas.school import School, SchoolCreate, SchoolUpdate
@@ -9,8 +10,8 @@ router = APIRouter()
 
 @router.post("/", response_model=School, dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
 def create_school(
-    *, 
-    db: Session = Depends(deps.get_db), 
+    *,
+    db: Session = Depends(deps.get_db),
     school_in: SchoolCreate
 ):
     """Create a new school."""
@@ -18,8 +19,8 @@ def create_school(
 
 @router.get("/{school_id}", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_READ))])
 def read_school(
-    *, 
-    db: Session = Depends(deps.get_db), 
+    *,
+    db: Session = Depends(deps.get_db),
     school_id: int
 ):
     """Get a school by ID."""
