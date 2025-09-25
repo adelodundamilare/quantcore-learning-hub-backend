@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash
 from app.services.email import EmailService
+from app.services.notification import notification_service
 
 class UserService:
     def invite_user(
@@ -32,8 +33,15 @@ class UserService:
             EmailService.send_email(
                 to_email=existing_user.email,
                 subject=f"You've been added to {school.name}!",
-                template_name="added_to_school.html", # Placeholder template
+                template_name="added_to_school.html",
                 template_context={'user_name': existing_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name}
+            )
+            notification_service.create_notification(
+                db, 
+                user_id=existing_user.id, 
+                message=f"You have been added to {school.name} as a {role_to_assign.name}.",
+                notification_type="school_invitation",
+                link=f"/schools/{school.id}" # Example link
             )
             return existing_user
         else:
@@ -63,8 +71,15 @@ class UserService:
             EmailService.send_email(
                 to_email=new_user.email,
                 subject=f"Welcome to {school.name}! Your Invitation Details",
-                template_name="new_account_invite.html", # Placeholder template
+                template_name="new_account_invite.html",
                 template_context={'user_name': new_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
+            )
+            notification_service.create_notification(
+                db, 
+                user_id=new_user.id, 
+                message=f"You have been invited to {school.name} as a {role_to_assign.name}.",
+                notification_type="school_invitation",
+                link=f"/schools/{school.id}" # Example link
             )
             return new_user
 

@@ -10,6 +10,7 @@ from app.models.school import School
 from app.core.security import get_password_hash
 from app.core.constants import RoleEnum
 from app.services.email import EmailService
+from app.services.notification import notification_service
 
 class SchoolService:
     """Service layer for school-related business logic."""
@@ -67,6 +68,13 @@ class SchoolService:
                 'password': temp_password,
                 'email': new_admin.email
             }
+        )
+        notification_service.create_notification(
+            db, 
+            user_id=new_admin.id, 
+            message=f"Welcome! Your school {new_school.name} has been created and you are the administrator.",
+            notification_type="school_admin_account",
+            link=f"/schools/{new_school.id}" # Example link
         )
 
         return new_school
