@@ -36,6 +36,11 @@ class UserService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"User is already associated with {school.name} as a {role_to_assign.name}."
                 )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"User is already associated with {school.name}."
+                )
 
         if existing_user:
             crud_user.add_user_to_school(
@@ -81,7 +86,7 @@ class UserService:
                 to_email=new_user.email,
                 subject=f"Welcome! Your Invitation Details",
                 template_name="new_account_invite.html", # Placeholder template
-                template_context={'user_name': new_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
+                template_context={'user_name': new_user.full_name, 'email': new_user.email, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
             )
             notification_service.create_notification(
                 db,
