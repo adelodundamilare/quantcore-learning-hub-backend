@@ -19,6 +19,7 @@ class CRUDNotification(CRUDBase[Notification, NotificationCreate, NotificationUp
         if notification:
             notification.is_read = True
             db.add(notification)
+            db.commit()
         return notification
 
     def mark_all_as_read(self, db: Session, *, user_id: int) -> None:
