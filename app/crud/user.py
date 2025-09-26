@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 from sqlalchemy.orm import Session
 from app.crud.base import CRUDBase
 from app.models.user import User
@@ -22,6 +22,13 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .all()
         )
         return [{"school": school, "role": role} for school, role in results]
+
+    def get_association_by_user_school_role(self, db: Session, *, user_id: int, school_id: int, role_id: int) -> Any | None:
+        return db.query(user_school_association).filter(
+            user_school_association.c.user_id == user_id,
+            user_school_association.c.school_id == school_id,
+            user_school_association.c.role_id == role_id
+        ).first()
 
     def add_user_to_school(self, db: Session, *, user: User, school: School, role: Role) -> None:
         stmt = user_school_association.insert().values(

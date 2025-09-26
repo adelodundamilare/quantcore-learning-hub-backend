@@ -26,6 +26,17 @@ class UserService:
 
         existing_user = crud_user.get_by_email(db, email=invite_in.email)
 
+        user_id_to_check = existing_user.id if existing_user else None
+        if user_id_to_check:
+            existing_association = crud_user.get_association_by_user_school_role(
+                db, user_id=user_id_to_check, school_id=school.id, role_id=role_to_assign.id
+            )
+            if existing_association:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"User is already associated with {school.name} as a {role_to_assign.name}."
+                )
+
         if existing_user:
             crud_user.add_user_to_school(
                 db, user=existing_user, school=school, role=role_to_assign
@@ -70,7 +81,7 @@ class UserService:
                 to_email=new_user.email,
                 subject=f"Welcome! Your Invitation Details",
                 template_name="new_account_invite.html", # Placeholder template
-                template_context={'user_name': new_user.full_name, 'email': new_user.email, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
+                template_context={'user_name': new_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
             )
             notification_service.create_notification(
                 db,
