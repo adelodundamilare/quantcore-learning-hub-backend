@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
@@ -93,20 +94,47 @@ def get_current_user_with_context(
             token, settings.SECRET_KEY, algorithms=["HS256"]
         )
         token_data = TokenPayload(**payload)
-    except (JWTError, Exception):
+    except JWTError:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
+        )
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
         )
 
     user = user_crud.get(db, id=token_data.user_id)
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or not active")
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
 
-    school = crud_school.get(db, id=token_data.school_id) if token_data.school_id else None
-    role = crud_role.get(db, id=token_data.role_id) if token_data.role_id else None
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive"
+        )
 
-    if (token_data.school_id and not school) or (token_data.role_id and not role):
-        raise HTTPException(status_code=404, detail="Context not found")
+    school = None
+    role = None
+
+    if token_data.school_id:
+        school = crud_school.get(db, id=token_data.school_id)
+        if not school:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="School not found"
+            )
+
+    if token_data.role_id:
+        role = crud_role.get(db, id=token_data.role_id)
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Role not found"
+            )
 
     return UserContext(user=user, school=school, role=role)

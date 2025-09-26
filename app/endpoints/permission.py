@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.utils import deps
-from app.crud import permission as crud_permission
+from app.crud.permission import permission as crud_permission
 from app.schemas.permission import Permission, PermissionCreate
 from app.core.constants import PermissionEnum
 from app.schemas.response import APIResponse

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.schemas.response import APIResponse
 from app.utils import deps
-from app.crud import school as crud_school
+from app.crud.school import school as crud_school
 from app.schemas.school import School, SchoolCreate
 from app.core.constants import PermissionEnum
 
@@ -10,8 +10,8 @@ router = APIRouter()
 
 @router.post("/", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
 def create_school(
-    *, 
-    db: Session = Depends(deps.get_transactional_db), 
+    *,
+    db: Session = Depends(deps.get_transactional_db),
     school_in: SchoolCreate
 ):
     """Create a new school."""

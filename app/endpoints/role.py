@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.schemas.response import APIResponse
 from app.utils import deps
-from app.crud import role as crud_role
-from app.schemas.role import Role, RoleCreate, RoleUpdate
+from app.crud.role import role as crud_role
+from app.schemas.role import Role, RoleCreate
 from app.services.role import role_service
 from app.core.constants import PermissionEnum
 
@@ -11,8 +11,8 @@ router = APIRouter()
 
 @router.post("/", response_model=APIResponse[Role], dependencies=[Depends(deps.require_permission(PermissionEnum.ROLE_CREATE))])
 def create_role(
-    *, 
-    db: Session = Depends(deps.get_transactional_db), 
+    *,
+    db: Session = Depends(deps.get_transactional_db),
     role_in: RoleCreate
 ):
     """Create a new role."""

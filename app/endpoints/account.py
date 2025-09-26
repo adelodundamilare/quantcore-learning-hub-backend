@@ -49,11 +49,9 @@ def invite_user(
             detail="You must have a school context to invite users."
         )
 
-    # Permission check based on inviting user's role
     inviting_role = context.role.name
     invited_role = invite_in.role_name
 
-    # Super Admin bypasses all invitation restrictions
     if inviting_role == RoleEnum.SUPER_ADMIN:
         pass # Super Admin can invite anyone
     elif inviting_role == RoleEnum.SCHOOL_ADMIN:
@@ -77,6 +75,7 @@ def invite_user(
     invited_user = user_service.invite_user(
         db, invited_by=context.user, school=context.school, invite_in=invite_in
     )
+
     return APIResponse(message="User invited successfully", data=User.model_validate(invited_user))
 
 @router.post("/me/change-password", response_model=APIResponse[None])

@@ -3,7 +3,8 @@ from fastapi import HTTPException, status
 import secrets
 import string
 
-from app.crud import user as crud_user, role as crud_role
+from app.crud.user import user as crud_user
+from app.crud.role import role as crud_role
 from app.schemas.user import UserCreate, UserInvite
 from app.models.user import User
 from app.models.school import School
@@ -47,11 +48,12 @@ class UserService:
             temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
             hashed_password = get_password_hash(temp_password)
 
-            user_in = UserCreate(
-                full_name=invite_in.full_name,
-                email=invite_in.email,
-                password=hashed_password
-            )
+            user_in = {
+                "full_name": invite_in.full_name,
+                "email": invite_in.email,
+                "hashed_password": hashed_password,
+                "is_active": True # User doesn't need verification
+            }
 
             try:
                 new_user = crud_user.create(db, obj_in=user_in, commit=False)

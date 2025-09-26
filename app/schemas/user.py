@@ -53,6 +53,7 @@ class UserContext(BaseModel):
     """Represents a user's role within a specific school."""
     school: School
     role: Role
+    user: User
     model_config = ConfigDict(from_attributes=True)
 
 class UserInvite(BaseModel):
