@@ -2,12 +2,12 @@ from enum import Enum
 
 
 class RoleEnum(str, Enum):
-    SUPER_ADMIN = "Super Admin"
-    SCHOOL_ADMIN = "School Admin"
-    TEACHER = "Teacher"
-    STUDENT = "Student"
-    ADMIN = "Admin"
-    MEMBER = "Member"
+    SUPER_ADMIN = "super_admin"
+    SCHOOL_ADMIN = "school_admin"
+    TEACHER = "teacher"
+    STUDENT = "student"
+    ADMIN = "admin"
+    MEMBER = "member"
 
 class PermissionEnum(str, Enum):
     # User Permissions
