@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import secrets
 import string
 import random
+from app.schemas.user import UserContext
 from app.services.email import EmailService
 from app.services.notification import notification_service
 
@@ -35,12 +36,16 @@ class AuthService:
 
         contexts = crud_user.get_user_contexts(db, user_id=user.id)
 
-        if len(contexts) == 1:
-            context = contexts[0]
+        pydantic_contexts = []
+        for ctx in contexts:
+            pydantic_contexts.append(UserContext(school=ctx['school'], role=ctx['role'], user=user))
+
+        if len(pydantic_contexts) == 1:
+            context = pydantic_contexts[0]
             token_payload = {
                 "user_id": user.id,
-                "school_id": context['school'].id,
-                "role_id": context['role'].id
+                "school_id": context.school.id,
+                "role_id": context.role.id
             }
         else:
             token_payload = {"user_id": user.id}
@@ -49,7 +54,7 @@ class AuthService:
 
         return LoginResponse(
             token=Token(access_token=access_token, token_type="bearer"),
-            contexts=contexts
+            contexts=pydantic_contexts
         )
 
     def select_context(
