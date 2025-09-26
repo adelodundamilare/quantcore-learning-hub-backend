@@ -45,7 +45,7 @@ class User(UserBase):
     """Main user schema for reading user data."""
     id: int
     is_active: bool
-    is_verified: bool
+    # is_verified: bool
     auth_provider: str
     model_config = ConfigDict(from_attributes=True)
 
