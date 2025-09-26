@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict, model_validator
 from typing import Optional, Any, List
 
 from .school import School
@@ -59,7 +59,7 @@ class UserInvite(BaseModel):
     """Schema for inviting a new user to a school."""
     full_name: str
     email: EmailStr
-    role_name: RoleEnum
+    role_name: RoleEnum = Field(..., description="Role of the invited user. Must be one of: Teacher, Student.")
 
     @field_validator('role_name')
     def validate_role(cls, v):

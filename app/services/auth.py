@@ -27,6 +27,12 @@ class AuthService:
                 detail="Incorrect email or password",
             )
 
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User is not verified or inactive",
+            )
+
         contexts = crud_user.get_user_contexts(db, user_id=user.id)
 
         if len(contexts) == 1:
