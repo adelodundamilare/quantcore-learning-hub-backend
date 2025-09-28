@@ -15,6 +15,4 @@ class SchoolUpdate(SchoolBase):
 class School(SchoolBase):
     """Schema for reading a school, includes the ID."""
     id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

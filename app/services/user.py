@@ -3,6 +3,7 @@ from fastapi import HTTPException, status
 import secrets
 import string
 
+from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.schemas.user import UserCreate, UserInvite
@@ -92,6 +93,54 @@ class UserService:
                 db,
                 user_id=new_user.id,
                 message=f"You have been invited to {school.name} as a {role_to_assign.name}.",
+                notification_type="school_invitation",
+                link=f"/schools/{school.id}" # Example link
+            )
+            return new_user
+
+    def admin_invite_user(
+        self, db: Session, *, school: School, invite_in: UserInvite
+    ) -> User:
+        """Admin invites a user to a school as a school admin."""
+        existing_user = crud_user.get_by_email(db, email=invite_in.email)
+
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Invited user already exists.",
+            )
+        else:
+            temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
+            hashed_password = get_password_hash(temp_password)
+
+            user_in = {
+                "full_name": invite_in.full_name,
+                "email": invite_in.email,
+                "hashed_password": hashed_password,
+                "is_active": True # User doesn't need verification
+            }
+
+            try:
+                new_user = crud_user.create(db, obj_in=user_in, commit=False)
+                crud_user.add_user_to_school(
+                    db, user=new_user, school=school, role=RoleEnum.SCHOOL_ADMIN
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"An error occurred during the invitation process: {e}",
+                )
+
+            EmailService.send_email(
+                to_email=new_user.email,
+                subject=f"Welcome! Your Invitation Details",
+                template_name="new_account_invite.html", # Placeholder template
+                template_context={'user_name': new_user.full_name, 'email': new_user.email, 'school_name': school.name, 'role_name': 'school_admin', 'password': temp_password}
+            )
+            notification_service.create_notification(
+                db,
+                user_id=new_user.id,
+                message=f"You have been invited to {school.name} as a school admin.",
                 notification_type="school_invitation",
                 link=f"/schools/{school.id}" # Example link
             )

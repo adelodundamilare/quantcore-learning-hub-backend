@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List
 from .user import UserContext
 from pydantic import EmailStr
@@ -44,3 +44,11 @@ class SuperAdminCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
+
+    @field_validator("password")
+    def validate_password(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Password cannot be empty or contain only whitespace.")
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+        return v

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict, model_validator
-from typing import Optional, Any, List
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, model_validator
+from typing import Optional, Any
 
 from .school import School
 from .role import Role
@@ -82,3 +82,10 @@ class UserInvite(BaseModel):
         if v not in [RoleEnum.TEACHER, RoleEnum.STUDENT]:
             raise ValueError("Users can only be invited as a Teacher or a Student.")
         return v
+
+
+class AdminSchoolInvite(BaseModel):
+    """Schema for inviting a new user to a school."""
+    full_name: str
+    school_name: str
+    email: EmailStr
