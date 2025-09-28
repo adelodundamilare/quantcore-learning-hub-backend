@@ -1,6 +1,7 @@
 from enum import Enum
 
 
+ADMIN_SCHOOL_NAME = "ADM-SCH-PLAT-001"
 class RoleEnum(str, Enum):
     SUPER_ADMIN = "super_admin"
     SCHOOL_ADMIN = "school_admin"

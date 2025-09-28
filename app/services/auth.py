@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from app.core.constants import RoleEnum
+from app.core.constants import ADMIN_SCHOOL_NAME, RoleEnum
 from app.crud.user import user as crud_user
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.schemas.token import LoginResponse, SuperAdminCreate, Token, TokenPayload
@@ -11,6 +11,7 @@ from app.models.one_time_token import TokenType
 from app.crud.token_denylist import token_denylist as crud_token_denylist
 from app.crud.one_time_token import one_time_token as crud_one_time_token
 from app.crud.role import role as crud_role
+from app.crud.school import school as crud_school
 from app.core.config import settings
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
@@ -190,8 +191,8 @@ class AuthService:
         )
 
     def create_super_admin(self, db: Session, *, super_admin_in: SuperAdminCreate) -> User:
-        super_admin_role = crud_role.get_by_name(db, name=RoleEnum.SUPER_ADMIN)
-        if not super_admin_role:
+        admin_role = crud_role.get_by_name(db, name=RoleEnum.SUPER_ADMIN) #would later be admin and member...
+        if not admin_role:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Role '{RoleEnum.SUPER_ADMIN}' not found. Please seed the database.",
@@ -213,10 +214,12 @@ class AuthService:
             "is_active": True
         }
 
-        new_super_admin = crud_user.create(db, obj_in=super_admin_data, commit=False)
+        admin_school = crud_school.get_by_name(db, name=ADMIN_SCHOOL_NAME)
+        if not admin_school:
+            admin_school = crud_school.create(db, obj_in={"name": ADMIN_SCHOOL_NAME}, commit=True)
 
-        new_super_admin.role = super_admin_role
-        crud_user.update(db, db_obj=new_super_admin)
+        new_super_admin = crud_user.create(db, obj_in=super_admin_data, commit=False)
+        crud_user.add_user_to_school(db, user=new_super_admin, school=admin_school, role=admin_role)
 
         notification_service.create_notification(
             db,
