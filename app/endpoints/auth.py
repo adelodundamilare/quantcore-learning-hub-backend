@@ -11,9 +11,9 @@ from app.schemas.school import School, SchoolCreate
 from app.schemas.user import UserCreate
 from app.utils import deps
 from app.services.auth import auth_service
-from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResendVerificationRequest, ResetPasswordRequest, Token, LoginRequest, VerifyAccountRequest
+from app.schemas.token import ForgotPasswordRequest, LoginResponse, ResendVerificationRequest, ResetPasswordRequest, SuperAdminCreate, Token, LoginRequest, VerifyAccountRequest
 from app.schemas.response import APIResponse
-from app.models.user import User
+from app.schemas.user import User
 
 router = APIRouter()
 
@@ -38,6 +38,19 @@ def school_signup(
         admin_in=signup_request.admin
     )
     return APIResponse(message="School and admin created successfully", data=School.model_validate(new_school))
+
+@router.post("/temp-create-super-admin", response_model=APIResponse[User])
+def school_signup(
+    *,
+    db: Session = Depends(deps.get_db),
+    signup_request: SuperAdminCreate
+):
+    """Handles the creation of a new school and its administrator."""
+    new_admin = auth_service.create_super_admin(
+        db=db,
+        super_admin_in=signup_request
+    )
+    return APIResponse(message="Super admin created successfully", data=User.model_validate(new_admin))
 
 @router.post("/login", response_model=APIResponse[LoginResponse])
 def login_for_access_token(

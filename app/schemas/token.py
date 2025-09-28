@@ -39,3 +39,8 @@ class VerifyAccountRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+class SuperAdminCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str

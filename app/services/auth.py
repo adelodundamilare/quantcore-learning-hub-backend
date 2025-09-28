@@ -1,14 +1,16 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
+from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.core.security import get_password_hash, verify_password, create_access_token
-from app.schemas.token import LoginResponse, Token, TokenPayload
+from app.schemas.token import LoginResponse, SuperAdminCreate, Token, TokenPayload
 from app.schemas.token_denylist import TokenDenylistCreate
 from app.models.user import User
 from app.models.one_time_token import TokenType
 from app.crud.token_denylist import token_denylist as crud_token_denylist
 from app.crud.one_time_token import one_time_token as crud_one_time_token
+from app.crud.role import role as crud_role
 from app.core.config import settings
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
@@ -186,5 +188,43 @@ class AuthService:
             template_name="verify_account.html",
             template_context={'user_name': user.full_name, 'verification_code': verification_code}
         )
+
+    def create_super_admin(self, db: Session, *, super_admin_in: SuperAdminCreate) -> User:
+        super_admin_role = crud_role.get_by_name(db, name=RoleEnum.SUPER_ADMIN)
+        if not super_admin_role:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Role '{RoleEnum.SUPER_ADMIN}' not found. Please seed the database.",
+            )
+
+        existing_user = crud_user.get_by_email(db, email=super_admin_in.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user with this email already exists.",
+            )
+
+        hashed_password = get_password_hash(super_admin_in.password)
+
+        super_admin_data = {
+            "full_name": super_admin_in.full_name,
+            "email": super_admin_in.email,
+            "hashed_password": hashed_password,
+            "is_active": True
+        }
+
+        new_super_admin = crud_user.create(db, obj_in=super_admin_data, commit=False)
+
+        new_super_admin.role = super_admin_role
+        crud_user.update(db, db_obj=new_super_admin)
+
+        notification_service.create_notification(
+            db,
+            user_id=new_super_admin.id,
+            message="Your Super Admin account has been created!",
+            notification_type="super_admin_creation"
+        )
+
+        return new_super_admin
 
 auth_service = AuthService()
