@@ -16,3 +16,4 @@ class School(Base):
         secondary=user_school_association,
         back_populates="schools"
     )
+    courses = relationship("Course", back_populates="school")

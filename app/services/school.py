@@ -1,15 +1,13 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-import secrets
-import string
 from app.core.config import settings
 
 from app.crud.school import school as crud_school
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.schemas.school import SchoolCreate
-from app.schemas.user import AdminSchoolInvite, UserCreate
+from app.schemas.user import UserCreate
 from app.models.school import School
 from app.core.security import get_password_hash
 from app.core.constants import RoleEnum

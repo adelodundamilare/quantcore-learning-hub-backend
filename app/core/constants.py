@@ -39,7 +39,18 @@ class PermissionEnum(str, Enum):
     USER_MANAGE_ROLES = "user:manage_roles"
     USER_MANAGE_SCHOOLS = "user:manage_schools"
 
-    # Other potential permissions
-    # ASSIGNMENT_CREATE = "assignment:create"
-    # COURSE_CREATE = "course:create"
+    # Course Permissions
+    COURSE_CREATE = "course:create"
+    COURSE_READ_ALL = "course:read_all"
+    COURSE_READ_OWN = "course:read_own"
+    COURSE_UPDATE = "course:update"
+    COURSE_DELETE = "course:delete"
+    COURSE_ASSIGN_TEACHER = "course:assign_teacher"
+    COURSE_ENROLL_STUDENT = "course:enroll_student"
+
+class CourseLevelEnum(str, Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+    ALL = "all"
 

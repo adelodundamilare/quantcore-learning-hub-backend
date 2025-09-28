@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
 from app.models.user_school_association import user_school_association
+from app.models.course import course_teachers_association, course_students_association
 
 class User(Base):
     __tablename__ = "users"
@@ -26,3 +27,5 @@ class User(Base):
         secondary=user_school_association,
         back_populates="users"
     )
+    teaching_courses = relationship("Course", secondary=course_teachers_association, back_populates="teachers")
+    enrolled_courses = relationship("Course", secondary=course_students_association, back_populates="students")
