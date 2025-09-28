@@ -10,7 +10,7 @@ from app.utils import deps
 
 router = APIRouter()
 
-@router.post("/", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
+@router.post("/", response_model=APIResponse[None], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
 def create_school(
     *,
     db: Session = Depends(deps.get_transactional_db),
@@ -18,13 +18,12 @@ def create_school(
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
     """Create a new school and its initial administrator by an existing admin."""
-    school = SchoolCreate(name=invite_in.school_name)
 
     new_school = user_service.admin_invite_user(
-        db, invited_by=context.user, school=school, invite_in=invite_in
+        db, invite_in=invite_in
     )
 
-    return APIResponse(message="School and admin created successfully", data=School.model_validate(new_school))
+    return APIResponse(message="School and admin created successfully")
 
 @router.get("/{school_id}", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_READ))])
 def read_school(

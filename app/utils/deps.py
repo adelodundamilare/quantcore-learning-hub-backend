@@ -15,7 +15,7 @@ from app.schemas.user import UserContext
 
 from app.schemas.token import TokenPayload
 from app.schemas.user import UserContext
-from app.core.constants import PermissionEnum
+from app.core.constants import PermissionEnum, RoleEnum
 
 from app.crud.token_denylist import token_denylist as token_denylist_crud
 from app.schemas.token import TokenPayload
@@ -45,7 +45,7 @@ def require_permission(permission_name: PermissionEnum):
     """Dependency that checks if the current user has the required permission."""
     def _verify_permission(context: UserContext = Depends(get_current_user_with_context)):
         # Super Admin bypasses all checks
-        if context.role and context.role.name == "Super Admin":
+        if context.role and context.role.name == RoleEnum.SUPER_ADMIN:
             return
 
         if not context.role:
