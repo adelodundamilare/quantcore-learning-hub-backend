@@ -1,3 +1,4 @@
+from typing import List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 import secrets
@@ -8,7 +9,7 @@ from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
 from app.schemas.school import SchoolCreate
-from app.schemas.user import  UserInvite
+from app.schemas.user import  UserContext, UserInvite
 from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash
@@ -16,6 +17,31 @@ from app.services.email import EmailService
 from app.services.notification import notification_service
 
 class UserService:
+
+    def get_students_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and (
+            not current_user_context.school or current_user_context.school.id != school_id
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view students for this school.")
+
+        student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
+        if not student_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+
+        return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=student_role.id, skip=skip, limit=limit)
+
+    def get_teachers_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and (
+            not current_user_context.school or current_user_context.school.id != school_id
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view teachers for this school.")
+
+        teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
+        if not teacher_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Teacher role not found.")
+
+        return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=teacher_role.id, skip=skip, limit=limit)
+
     def invite_user(
         self, db: Session, *, invited_by: User, school: School, invite_in: UserInvite
     ) -> User:

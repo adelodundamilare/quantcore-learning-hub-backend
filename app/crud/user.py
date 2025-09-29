@@ -30,6 +30,19 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             user_school_association.c.role_id == role_id
         ).first()
 
+    def get_users_by_school_and_role(self, db: Session, *, school_id: int, role_id: int, skip: int = 0, limit: int = 100) -> List[User]:
+        return (
+            db.query(User)
+            .join(user_school_association, User.id == user_school_association.c.user_id)
+            .filter(
+                user_school_association.c.school_id == school_id,
+                user_school_association.c.role_id == role_id
+            )
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
     def add_user_to_school(self, db: Session, *, user: User, school: School, role: Role) -> None:
         stmt = user_school_association.insert().values(
             user_id=user.id,
