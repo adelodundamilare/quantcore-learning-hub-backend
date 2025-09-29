@@ -13,10 +13,10 @@ from app.services.notification import notification_service
 
 class CourseService:
     def _is_teacher_of_course(self, user: User, course: Course) -> bool:
-        return user in course.teachers
+        return user.id in [teacher.id for teacher in course.teachers]
 
     def _is_student_of_course(self, user: User, course: Course) -> bool:
-        return user in course.students
+        return user.id in [student.id for student in course.students]
 
     def _check_course_access(self, current_user_context: UserContext, course: Course, allow_student_view: bool = False):
         if current_user_context.role.name == RoleEnum.SUPER_ADMIN:
