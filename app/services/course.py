@@ -1,3 +1,4 @@
+from typing import List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
@@ -39,6 +40,10 @@ class CourseService:
         course_data['school_id'] = school_id_for_course
         new_course = crud_course.create(db, obj_in=course_data, commit=False)
 
+        # Auto-assign teacher if the creator is a teacher
+        if current_user_context.role.name == RoleEnum.TEACHER:
+            self.assign_teacher(db, course_id=new_course.id, user_id=current_user_context.user.id, current_user_context=current_user_context)
+
         notification_service.create_notification(
             db,
             user_id=current_user_context.user.id,
@@ -47,7 +52,6 @@ class CourseService:
             link=f"/courses/{new_course.id}"
         )
         return new_course
-
     def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> Course:
         course = crud_course.get(db, id=course_id)
         if not course:
@@ -120,5 +124,24 @@ class CourseService:
             link=f"/courses/{course.id}"
         )
         return course
+
+    def get_all_courses(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Course]:
+        if current_user_context.role.name == RoleEnum.SUPER_ADMIN:
+            return crud_course.get_multi(db, skip=skip, limit=limit)
+        elif current_user_context.school:
+            return crud_course.get_courses_by_school(db, school_id=current_user_context.school.id, skip=skip, limit=limit)
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view courses.")
+
+    def get_user_courses(self, db: Session, current_user_context: UserContext) -> List[Course]:
+        return crud_course.get_courses_by_user_id(db, user_id=current_user_context.user.id)
+
+    def get_courses_by_school_id(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Course]:
+        if current_user_context.role.name == RoleEnum.SUPER_ADMIN:
+            return crud_course.get_courses_by_school(db, school_id=school_id, skip=skip, limit=limit)
+        elif current_user_context.school and current_user_context.school.id == school_id:
+            return crud_course.get_courses_by_school(db, school_id=school_id, skip=skip, limit=limit)
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view courses for this school.")
 
 course_service = CourseService()
