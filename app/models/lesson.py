@@ -11,6 +11,7 @@ class Lesson(Base):
     title = Column(String, index=True, nullable=False)
     content = Column(String, nullable=True)
     lesson_type = Column(Enum(LessonTypeEnum), nullable=False, default=LessonTypeEnum.TEXT)
+    duration = Column(Integer, nullable=False, default=0) # Duration in minutes
     order = Column(Integer, nullable=False, default=0)
     curriculum_id = Column(Integer, ForeignKey("curriculums.id"), nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
