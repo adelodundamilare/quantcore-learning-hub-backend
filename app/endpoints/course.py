@@ -11,7 +11,7 @@ from app.core.constants import PermissionEnum, RoleEnum
 
 router = APIRouter()
 
-@router.post("/", response_model=APIResponse[Course], dependencies=[Depends(deps.require_permission(PermissionEnum.COURSE_CREATE))])
+@router.post("/", response_model=APIResponse[Course])
 def create_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
