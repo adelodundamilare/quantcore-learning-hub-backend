@@ -6,6 +6,7 @@ from app.crud.course import course as crud_course
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
+from app.models.user import User
 from app.schemas.course import CourseCreate, Course
 from app.schemas.user import UserContext
 from app.core.constants import RoleEnum
@@ -124,6 +125,28 @@ class CourseService:
             link=f"/courses/{course.id}"
         )
         return course
+
+    def get_course_teachers(self, db: Session, course_id: int, current_user_context: UserContext) -> List[User]:
+        course = crud_course.get(db, id=course_id)
+        if not course:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
+
+        # Permission check for reading course
+        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and course.school_id != current_user_context.school.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this course.")
+
+        return course.teachers
+
+    def get_course_students(self, db: Session, course_id: int, current_user_context: UserContext) -> List[User]:
+        course = crud_course.get(db, id=course_id)
+        if not course:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
+
+        # Permission check for reading course
+        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and course.school_id != current_user_context.school.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this course.")
+
+        return course.students
 
     def get_all_courses(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Course]:
         if current_user_context.role.name == RoleEnum.SUPER_ADMIN:

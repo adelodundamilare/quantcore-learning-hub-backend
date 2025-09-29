@@ -2,6 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.schemas.user import User
 from app.schemas.response import APIResponse
 from app.utils import deps
 from app.schemas.course import Course, CourseCreate
@@ -23,7 +24,6 @@ def create_course(
     new_course = course_service.create_course(db, course_in=course_in, current_user_context=context)
     return APIResponse(message="Course created successfully", data=Course.model_validate(new_course))
 
-
 @router.get("/", response_model=APIResponse[List[Course]])
 def get_all_courses(
     db: Session = Depends(deps.get_db),
@@ -33,7 +33,7 @@ def get_all_courses(
 ):
     """Retrieve all courses accessible to the current user."""
     courses = course_service.get_all_courses(db, current_user_context=context, skip=skip, limit=limit)
-    return APIResponse(message="Courses retrieved successfully", data=[Course.model_validate(c) for c in courses])
+    return APIResponse(message="Student enrolled in course successfully", data=[Course.model_validate(c) for c in courses])
 
 @router.get("/me", response_model=APIResponse[List[Course]])
 def get_my_courses(
@@ -43,6 +43,28 @@ def get_my_courses(
     """Retrieve courses where the current user is a teacher or student."""
     courses = course_service.get_user_courses(db, current_user_context=context)
     return APIResponse(message="Your courses retrieved successfully", data=[Course.model_validate(c) for c in courses])
+
+@router.get("/{course_id}/teachers", response_model=APIResponse[List[User]])
+def get_course_teachers(
+    *,
+    db: Session = Depends(deps.get_db),
+    course_id: int,
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Retrieve all teachers assigned to a specific course."""
+    teachers = course_service.get_course_teachers(db, course_id=course_id, current_user_context=context)
+    return APIResponse(message="Course teachers retrieved successfully", data=[User.model_validate(u) for u in teachers])
+
+@router.get("/{course_id}/students", response_model=APIResponse[List[User]])
+def get_course_students(
+    *,
+    db: Session = Depends(deps.get_db),
+    course_id: int,
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Retrieve all students enrolled in a specific course."""
+    students = course_service.get_course_students(db, course_id=course_id, current_user_context=context)
+    return APIResponse(message="Course students retrieved successfully", data=[User.model_validate(u) for u in students])
 
 @router.get("/{course_id}", response_model=APIResponse[Course])
 def read_course(

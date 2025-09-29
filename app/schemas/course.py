@@ -27,6 +27,6 @@ class Course(CourseBase):
     """Schema for reading a course, includes ID and relationships."""
     id: int
     school_id: int
-    teachers: List[User] = []
-    students: List[User] = []
+    # teachers: List[User] = []
+    # students: List[User] = []
     model_config = ConfigDict(from_attributes=True)
