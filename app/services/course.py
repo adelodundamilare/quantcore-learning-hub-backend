@@ -1,22 +1,38 @@
 from typing import List
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-
-from app.crud.course import course as crud_course
+from requests import Session
+from app.models.course import Course
+from app.schemas.course import CourseCreate
+from app.schemas.user import UserContext, User
+from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
-from app.models.user import User
-from app.schemas.course import CourseCreate, Course
-from app.schemas.user import UserContext
-from app.core.constants import RoleEnum
+from app.crud.course import course as crud_course
 from app.services.notification import notification_service
 
 class CourseService:
-    """Service layer for course-related business logic."""
+    def _is_teacher_of_course(self, user: User, course: Course) -> bool:
+        return user in course.teachers
+
+    def _is_student_of_course(self, user: User, course: Course) -> bool:
+        return user in course.students
+
+    def _check_course_access(self, current_user_context: UserContext, course: Course, allow_student_view: bool = False):
+        if current_user_context.role.name == RoleEnum.SUPER_ADMIN:
+            return
+
+        if current_user_context.school and course.school_id == current_user_context.school.id:
+            if current_user_context.role.name == RoleEnum.TEACHER and self._is_teacher_of_course(current_user_context.user, course):
+                return
+            if current_user_context.role.name == RoleEnum.STUDENT and self._is_student_of_course(current_user_context.user, course) and allow_student_view:
+                return
+            if current_user_context.role.name == RoleEnum.SCHOOL_ADMIN:
+                return
+
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this course.")
 
     def create_course(self, db: Session, course_in: CourseCreate, current_user_context: UserContext) -> Course:
-        # Permission Logic
         if current_user_context.role.name == RoleEnum.STUDENT:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students cannot create courses.")
 
@@ -32,7 +48,6 @@ class CourseService:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only create courses for your assigned school.")
             school_id_for_course = current_user_context.school.id
 
-        # Ensure the school exists
         school = crud_school.get(db, id=school_id_for_course)
         if not school:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="School not found.")
@@ -41,7 +56,6 @@ class CourseService:
         course_data['school_id'] = school_id_for_course
         new_course = crud_course.create(db, obj_in=course_data, commit=False)
 
-        # Auto-assign teacher if the creator is a teacher
         if current_user_context.role.name == RoleEnum.TEACHER:
             self.assign_teacher(db, course_id=new_course.id, user_id=current_user_context.user.id, current_user_context=current_user_context)
 
@@ -53,12 +67,12 @@ class CourseService:
             link=f"/courses/{new_course.id}"
         )
         return new_course
+
     def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> Course:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
 
-        # Check if current user has permission for this school
         if current_user_context.role.name != RoleEnum.SUPER_ADMIN and course.school_id != current_user_context.school.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only assign teachers to courses in your assigned school.")
 
@@ -66,7 +80,6 @@ class CourseService:
         if not teacher_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher user not found.")
 
-        # Verify user has a teacher role in this school context
         teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
         if not teacher_role:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Teacher role not found.")
@@ -77,7 +90,7 @@ class CourseService:
         if not teacher_association:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not have a teacher role in this school.")
 
-        if teacher_user in course.teachers:
+        if self._is_teacher_of_course(teacher_user, course):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already a teacher for this course.")
 
         crud_course.add_teacher_to_course(db, course=course, user=teacher_user)
@@ -95,7 +108,6 @@ class CourseService:
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
 
-        # Check if current user has permission for this school
         if current_user_context.role.name != RoleEnum.SUPER_ADMIN and course.school_id != current_user_context.school.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only enroll students in courses in your assigned school.")
 
@@ -113,7 +125,7 @@ class CourseService:
         if not student_association:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not have a student role in this school.")
 
-        if student_user in course.students:
+        if self._is_student_of_course(student_user, course):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already enrolled in this course.")
 
         crud_course.enroll_student_in_course(db, course=course, user=student_user)
@@ -131,10 +143,7 @@ class CourseService:
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
 
-        # Permission check for reading course
-        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and course.school_id != current_user_context.school.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this course.")
-
+        self._check_course_access(current_user_context, course)
         return course.teachers
 
     def get_course_students(self, db: Session, course_id: int, current_user_context: UserContext) -> List[User]:
@@ -142,10 +151,7 @@ class CourseService:
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
 
-        # Permission check for reading course
-        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and course.school_id != current_user_context.school.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this course.")
-
+        self._check_course_access(current_user_context, course)
         return course.students
 
     def get_all_courses(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Course]:

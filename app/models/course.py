@@ -4,7 +4,6 @@ from sqlalchemy.sql import func
 from app.core.database import Base
 from app.core.constants import CourseLevelEnum
 
-# Association table for Course and Teachers
 course_teachers_association = Table(
     "course_teachers_association",
     Base.metadata,
@@ -12,7 +11,6 @@ course_teachers_association = Table(
     Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
 )
 
-# Association table for Course and Students
 course_students_association = Table(
     "course_students_association",
     Base.metadata,
@@ -37,3 +35,4 @@ class Course(Base):
     school = relationship("School", back_populates="courses")
     teachers = relationship("User", secondary=course_teachers_association, back_populates="teaching_courses")
     students = relationship("User", secondary=course_students_association, back_populates="enrolled_courses")
+    curriculums = relationship("Curriculum", back_populates="course", cascade="all, delete-orphan")
