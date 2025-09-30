@@ -160,11 +160,11 @@ def get_exam_results(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attempt does not belong to the specified exam.")
     return APIResponse(message="Exam results retrieved successfully", data=ExamAttempt.model_validate(attempt))
 
-@router.get("/users/{user_id}/exam_attempts", response_model=APIResponse[List[ExamAttempt]])
-def get_user_exam_attempts(
-    user_id: int,
-    db: Session = Depends(deps.get_db),
-    context: UserContext = Depends(deps.get_current_user_with_context)
-):
-    attempts = exam_attempt_service.get_user_exam_attempts(db, user_id=user_id, current_user_context=context)
-    return APIResponse(message="User exam attempts retrieved successfully", data=[ExamAttempt.model_validate(a) for a in attempts])
+# @router.get("/users/{user_id}/exam_attempts", response_model=APIResponse[List[ExamAttempt]])
+# def get_user_exam_attempts(
+#     user_id: int,
+#     db: Session = Depends(deps.get_db),
+#     context: UserContext = Depends(deps.get_current_user_with_context)
+# ):
+#     attempts = exam_attempt_service.get_user_exam_attempts(db, user_id=user_id, current_user_context=context)
+#     return APIResponse(message="User exam attempts retrieved successfully", data=[ExamAttempt.model_validate(a) for a in attempts])
