@@ -18,6 +18,8 @@ class ExamAttemptCreate(ExamAttemptBase):
     pass
 
 class ExamAttemptUpdate(ExamAttemptBase):
+    user_id: Optional[int] = None
+    exam_id: Optional[int] = None
     end_time: Optional[datetime] = None
     score: Optional[float] = None
     passed: Optional[bool] = None

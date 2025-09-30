@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Any
 from datetime import datetime
 
@@ -14,7 +14,9 @@ class UserAnswerCreate(UserAnswerBase):
     pass
 
 class UserAnswerUpdate(UserAnswerBase):
-    answer_text: Optional[str] = None
+    exam_attempt_id: Optional[int] = None
+    question_id: Optional[int] = None
+    answer_text: Optional[int] = None
     is_correct: Optional[bool] = None
     score: Optional[float] = None
 

@@ -134,7 +134,7 @@ def submit_answer(
 ):
     if user_answer_in.exam_attempt_id != attempt_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attempt ID in path and body must match.")
-    # Further validation to ensure question_id belongs to exam_id and attempt_id
+
     updated_answer = exam_attempt_service.submit_answer(db, attempt_id=attempt_id, question_id=user_answer_in.question_id, answer_text=user_answer_in.answer_text, current_user_context=context)
     return APIResponse(message="Answer submitted successfully", data=UserAnswer.model_validate(updated_answer))
 

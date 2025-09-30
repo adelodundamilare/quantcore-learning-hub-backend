@@ -97,7 +97,7 @@ class ExamAttemptService:
             user_answer_in = UserAnswerUpdate(answer_text=answer_text)
             updated_answer = crud_user_answer.update(db, db_obj=user_answer_obj, obj_in=user_answer_in)
         else:
-            user_answer_in = UserAnswerCreate(exam_attempt_id=attempt_id, question_id=question_id, user_id=current_user_context.user.id, answer_text=answer_text)
+            user_answer_in = {"user_id": current_user_context.user.id, "exam_attempt_id": attempt_id, "question_id": question_id, "answer_text": answer_text}
             updated_answer = crud_user_answer.create(db, obj_in=user_answer_in)
 
         return updated_answer
@@ -136,13 +136,14 @@ class ExamAttemptService:
                     if user_answer.answer_text == question.correct_answer:
                         is_correct = True
 
-                user_answer.is_correct = is_correct
-                if is_correct:
-                    user_answer.score = question.points
-                    total_score += question.points
-                else:
-                    user_answer.score = 0.0
-                crud_user_answer.update(db, db_obj=user_answer, obj_in=user_answer)
+                score = question.points if is_correct else 0.0
+                total_score += score if is_correct else 0
+
+                update_data = UserAnswerUpdate(
+                    is_correct=is_correct,
+                    score=score
+                )
+                crud_user_answer.update(db, db_obj=user_answer, obj_in=update_data)
 
         if total_possible_points == 0:
             final_score_percentage = 0.0
