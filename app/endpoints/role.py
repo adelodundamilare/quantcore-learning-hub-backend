@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.schemas.response import APIResponse
@@ -8,6 +9,14 @@ from app.services.role import role_service
 from app.core.constants import PermissionEnum
 
 router = APIRouter()
+@router.get("/", response_model=APIResponse[List[Role]])
+def read_roles(
+    *,
+    db: Session = Depends(deps.get_db),
+):
+    """Get all roles."""
+    roles = crud_role.get_multi(db=db)
+    return APIResponse(message="Roles retrieved successfully", data=roles)
 
 @router.post("/", response_model=APIResponse[Role], dependencies=[Depends(deps.require_permission(PermissionEnum.ROLE_CREATE))])
 def create_role(

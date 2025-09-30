@@ -75,7 +75,7 @@ class LessonService:
         if current_user_context.role.name == RoleEnum.TEACHER and not course_service._is_teacher_of_course(current_user_context.user, lesson.curriculum.course):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a teacher of this course to delete lessons.")
 
-        crud_lesson.remove(db, id=lesson_id)
+        crud_lesson.delete(db, id=lesson_id)
         return {"message": "Lesson deleted successfully"}
 
 lesson_service = LessonService()

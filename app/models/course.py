@@ -36,3 +36,4 @@ class Course(Base):
     teachers = relationship("User", secondary=course_teachers_association, back_populates="teaching_courses")
     students = relationship("User", secondary=course_students_association, back_populates="enrolled_courses")
     curriculums = relationship("Curriculum", back_populates="course", cascade="all, delete-orphan")
+    exams = relationship("Exam", back_populates="course", cascade="all, delete-orphan")

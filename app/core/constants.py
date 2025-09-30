@@ -53,3 +53,12 @@ class LessonTypeEnum(str, Enum):
     VIDEO = "video"
     QUIZ = "quiz"
 
+class QuestionTypeEnum(str, Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+
+class ExamAttemptStatusEnum(str, Enum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    GRADED = "graded"
+

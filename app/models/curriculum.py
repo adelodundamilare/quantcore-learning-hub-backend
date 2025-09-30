@@ -17,3 +17,4 @@ class Curriculum(Base):
 
     course = relationship("Course", back_populates="curriculums")
     lessons = relationship("Lesson", back_populates="curriculum", cascade="all, delete-orphan")
+    exams = relationship("Exam", back_populates="curriculum", cascade="all, delete-orphan")

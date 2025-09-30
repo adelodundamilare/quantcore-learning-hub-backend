@@ -75,7 +75,7 @@ class CurriculumService:
         if current_user_context.role.name == RoleEnum.TEACHER and not course_service._is_teacher_of_course(current_user_context.user, curriculum.course):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a teacher of this course to delete curriculums.")
 
-        crud_curriculum.remove(db, id=curriculum_id)
+        crud_curriculum.delete(db, id=curriculum_id)
         return {"message": "Curriculum deleted successfully"}
 
 curriculum_service = CurriculumService()
