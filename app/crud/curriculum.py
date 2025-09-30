@@ -9,4 +9,7 @@ class CRUDCurriculum(CRUDBase[Curriculum, CurriculumCreate, CurriculumUpdate]):
     def get_by_course(self, db: Session, *, course_id: int) -> List[Curriculum]:
         return db.query(self.model).filter(self.model.course_id == course_id).order_by(self.model.order).all()
 
+    def get_curriculums_by_course(self, db: Session, *, course_ids: List[int]) -> List[Curriculum]:
+        return db.query(self.model).filter(self.model.course_id.in_(course_ids)).order_by(self.model.course_id, self.model.order).all()
+
 curriculum = CRUDCurriculum(Curriculum)

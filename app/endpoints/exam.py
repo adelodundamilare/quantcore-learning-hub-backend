@@ -24,6 +24,14 @@ def create_exam(
     new_exam = exam_service.create_exam(db, exam_in=exam_in, current_user_context=context)
     return APIResponse(message="Exam created successfully", data=Exam.model_validate(new_exam))
 
+@router.get("/", response_model=APIResponse[List[Exam]])
+def get_all_exams(
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    exams = exam_service.get_all_exams_for_user(db, current_user_context=context)
+    return APIResponse(message="Exams retrieved successfully", data=[Exam.model_validate(e) for e in exams])
+
 @router.get("/{exam_id}", response_model=APIResponse[Exam])
 def get_exam(
     exam_id: int,

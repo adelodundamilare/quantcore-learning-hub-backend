@@ -12,4 +12,10 @@ class CRUDExam(CRUDBase[Exam, ExamCreate, ExamUpdate]):
     def get_by_curriculum(self, db: Session, *, curriculum_id: int) -> List[Exam]:
         return db.query(self.model).filter(self.model.curriculum_id == curriculum_id).all()
 
+    def get_exams_by_course_ids(self, db: Session, *, course_ids: List[int]) -> List[Exam]:
+        return db.query(self.model).filter(self.model.course_id.in_(course_ids)).all()
+
+    def get_exams_by_curriculum_ids(self, db: Session, *, curriculum_ids: List[int]) -> List[Exam]:
+        return db.query(self.model).filter(self.model.curriculum_id.in_(curriculum_ids)).all()
+
 exam = CRUDExam(Exam)
