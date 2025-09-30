@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "https://quantcore-learning-hub-frontend-w397-4z18yvxts.vercel.app"]
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "https://quantcore-learning-hub-frontend-w397-4z18yvxts.vercel.app", "https://quantcore-learning-hub-fronten-git-0b7170-rambeycoders-projects.vercel.app"]
 
     # Database Configuration
     DATABASE_HOST: str
