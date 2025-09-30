@@ -93,6 +93,8 @@ def update_question(
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
+    if question_in.exam_id != exam_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exam ID in path and body must match.")
     question = exam_service.get_question(db, question_id=question_id, current_user_context=context)
     if question.exam_id != exam_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question does not belong to the specified exam.")
