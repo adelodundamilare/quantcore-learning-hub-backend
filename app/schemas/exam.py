@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict, Field
+from wsgiref.validate import validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -16,6 +17,28 @@ class ExamBase(BaseModel):
     allow_multiple_attempts: bool = False
     show_results_immediately: bool = False
 
+    @field_validator('course_id', 'curriculum_id')
+    @classmethod
+    def validate_ids(cls, v):
+        if v == 0:
+            return None
+        return v
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Final Exam",
+                "description": "End of course assessment",
+                "course_id": 1,
+                "curriculum_id": None,
+                "duration_minutes": 60,
+                "pass_percentage": 70.0,
+                "is_active": True,
+                "allow_multiple_attempts": False,
+                "show_results_immediately": False
+            }
+        }
+
 class ExamCreate(ExamBase):
     pass
 
@@ -26,7 +49,7 @@ class ExamUpdate(ExamBase):
 class Exam(ExamBase):
     id: int
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     questions: List[Question] = []
     attempts: List[ExamAttempt] = []
 

@@ -77,6 +77,9 @@ class ExamService:
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
 
+        if exam_in.course_id or exam_in.curriculum_id:
+            self._can_manage_exam_or_question(db, current_user_context, course_id=exam_in.course_id, curriculum_id=exam_in.curriculum_id)
+
         self._can_manage_exam_or_question(db, current_user_context, exam=exam)
 
         updated_exam = crud_exam.update(db, db_obj=exam, obj_in=exam_in)
