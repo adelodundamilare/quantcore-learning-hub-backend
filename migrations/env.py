@@ -14,7 +14,18 @@ from app.models.school import School
 from app.models.role import Role
 from app.models.permission import Permission
 from app.models.one_time_token import OneTimeToken
+from app.models.notification import Notification
 from app.models.user_school_association import user_school_association
+from app.models.course import Course
+from app.models.course_teachers_association import course_teachers_association
+from app.models.course_students_association import course_students_association
+from app.models.exam_attempt import ExamAttempt
+from app.models.user_answer import UserAnswer
+from app.models.question import Question
+from app.models.exam import Exam
+from app.models.question_type import QuestionType
+from app.models.exam_attempt_status import ExamAttemptStatus
+
 
 # Alembic Config object, which provides access to the .ini file values
 config = context.config

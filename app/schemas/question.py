@@ -26,7 +26,7 @@ class QuestionUpdate(QuestionBase):
 class Question(QuestionBase):
     id: int
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime]
     user_answers: List[UserAnswer] = []
 
     model_config = ConfigDict(from_attributes=True)
