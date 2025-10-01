@@ -10,7 +10,7 @@ from app.crud.user import user as crud_user
 from app.crud.school import school as crud_school
 from app.crud.course import course as crud_course
 from app.services.notification import notification_service
-from app.utils.permission import PermissionService as permission_helper
+from app.utils.permission import PermissionHelper as permission_helper
 
 
 class CourseService:
