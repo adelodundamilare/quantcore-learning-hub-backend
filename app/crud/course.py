@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
 from typing import List
 
@@ -40,6 +40,7 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         """Get all courses where user is either a teacher or student."""
         return (
             db.query(Course)
+            .options(selectinload(Course.teachers), selectinload(Course.students))
             .join(course_teachers_association, Course.id == course_teachers_association.c.course_id, isouter=True)
             .join(course_students_association, Course.id == course_students_association.c.course_id, isouter=True)
             .filter(
@@ -56,6 +57,7 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         """Get courses where user is a teacher."""
         return (
             db.query(Course)
+            .options(selectinload(Course.teachers), selectinload(Course.students))
             .join(course_teachers_association)
             .filter(course_teachers_association.c.user_id == user_id)
             .all()
@@ -65,6 +67,7 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         """Get courses where user is a student."""
         return (
             db.query(Course)
+            .options(selectinload(Course.teachers), selectinload(Course.students))
             .join(course_students_association)
             .filter(course_students_association.c.user_id == user_id)
             .all()
@@ -74,6 +77,7 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         """Get courses by school with pagination."""
         return (
             db.query(Course)
+            .options(selectinload(Course.teachers), selectinload(Course.students))
             .filter(Course.school_id == school_id)
             .filter(Course.deleted_at.is_(None))  # Exclude soft-deleted courses
             .offset(skip)
