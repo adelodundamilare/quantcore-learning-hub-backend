@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Tuple, List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from datetime import datetime
@@ -13,116 +13,97 @@ from app.schemas.exam import Exam
 from app.schemas.exam_attempt import ExamAttemptCreate, ExamAttemptUpdate, ExamAttempt
 from app.schemas.user_answer import UserAnswerCreate, UserAnswerUpdate, UserAnswer
 from app.schemas.user import UserContext
-from app.core.constants import RoleEnum, QuestionTypeEnum, ExamAttemptStatusEnum
-from app.services.course import course_service
+from app.core.constants import QuestionTypeEnum, ExamAttemptStatusEnum
+from app.utils.permission import PermissionHelper as permission_helper
+
 
 class ExamAttemptService:
-    def _can_start_exam_attempt(self, db: Session, current_user_context: UserContext, exam: Exam):
-        if current_user_context.role.name != RoleEnum.STUDENT:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can start exam attempts.")
 
+    def _get_course_from_exam(self, db: Session, exam: Exam):
         if exam.course_id:
             course = crud_course.get(db, id=exam.course_id)
-            course_service._check_course_access(current_user_context, course, allow_student_view=True)
-            if not course_service._is_student_of_course(current_user_context.user, course):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a student of this course to take this exam.")
+            if not course:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
+            return course
         elif exam.curriculum_id:
             curriculum = crud_curriculum.get(db, id=exam.curriculum_id)
-            course_service._check_course_access(current_user_context, curriculum.course, allow_student_view=True)
-            if not course_service._is_student_of_course(current_user_context.user, curriculum.course):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a student of this course to take this exam.")
-        else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exam is not associated with a course or curriculum.")
+            if not curriculum:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found.")
+            return curriculum.course
+        return None
 
-    def _can_submit_answer_or_exam(self, db: Session, current_user_context: UserContext, attempt: ExamAttempt):
+    def _require_student_enrollment_in_exam(self, db: Session, current_user_context: UserContext, exam: Exam):
+        if not permission_helper.is_student(current_user_context):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only students can start exam attempts."
+            )
+
+        course = self._get_course_from_exam(db, exam)
+        if not course:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Exam is not associated with a course or curriculum."
+            )
+
+        permission_helper.require_course_view_permission(current_user_context, course)
+
+        if not permission_helper.is_student_of_course(current_user_context.user, course):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You must be a student of this course to take this exam."
+            )
+
+    def _require_attempt_ownership_and_in_progress(self, current_user_context: UserContext, attempt: ExamAttempt):
         if attempt.user_id != current_user_context.user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only submit answers for your own attempts.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only submit answers for your own attempts."
+            )
 
         if attempt.status != ExamAttemptStatusEnum.IN_PROGRESS:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot submit answers for an exam attempt that is not in progress.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot submit answers for an exam attempt that is not in progress."
+            )
 
-    def _can_view_exam_attempt(self, db: Session, current_user_context: UserContext, attempt: ExamAttempt):
+    def _require_attempt_view_permission(self, db: Session, current_user_context: UserContext, attempt: ExamAttempt):
         if attempt.user_id == current_user_context.user.id:
             return
 
-        if current_user_context.role.name == RoleEnum.STUDENT:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own exam attempts.")
+        if permission_helper.is_student(current_user_context):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own exam attempts."
+            )
 
         exam = crud_exam.get(db, id=attempt.exam_id)
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found for this attempt.")
 
-        if exam.course_id:
-            course = crud_course.get(db, id=exam.course_id)
-            course_service._check_course_access(current_user_context, course, allow_student_view=True)
-        elif exam.curriculum_id:
-            curriculum = crud_curriculum.get(db, id=exam.curriculum_id)
-            course_service._check_course_access(current_user_context, curriculum.course, allow_student_view=True)
-        else:
-            if current_user_context.role.name != RoleEnum.SUPER_ADMIN:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this exam attempt.")
+        course = self._get_course_from_exam(db, exam)
+        if not course:
+            if not permission_helper.is_super_admin(current_user_context):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to view this exam attempt."
+                )
+            return
 
-    def start_exam_attempt(self, db: Session, exam_id: int, current_user_context: UserContext) -> ExamAttempt:
-        exam = crud_exam.get(db, id=exam_id)
-        if not exam:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
+        permission_helper.require_course_view_permission(current_user_context, course)
 
-        self._can_start_exam_attempt(db, current_user_context, exam)
-
-        existing_attempts = crud_exam_attempt.get_by_user_and_exam(db, user_id=current_user_context.user.id, exam_id=exam_id)
-        if not exam.allow_multiple_attempts and len(existing_attempts) > 0:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already attempted this exam and multiple attempts are not allowed.")
-
-        attempt_in = ExamAttemptCreate(user_id=current_user_context.user.id, exam_id=exam_id, start_time=datetime.now())
-        new_attempt = crud_exam_attempt.create(db, obj_in=attempt_in)
-        return new_attempt
-
-    def submit_answer(self, db: Session, attempt_id: int, question_id: int, answer_text: str, current_user_context: UserContext) -> UserAnswer:
-        attempt = crud_exam_attempt.get(db, id=attempt_id)
-        if not attempt:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
-
-        self._can_submit_answer_or_exam(db, current_user_context, attempt)
-
-        question = crud_question.get(db, id=question_id)
-        if not question:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
-
+    def _validate_question_belongs_to_exam(self, question, attempt):
         if question.exam_id != attempt.exam_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question does not belong to this exam attempt.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Question does not belong to this exam attempt."
+            )
 
-        user_answer_obj = crud_user_answer.get_by_attempt_and_question(db, exam_attempt_id=attempt_id, question_id=question_id)
-
-        if user_answer_obj:
-            user_answer_in = UserAnswerUpdate(answer_text=answer_text)
-            updated_answer = crud_user_answer.update(db, db_obj=user_answer_obj, obj_in=user_answer_in)
-        else:
-            user_answer_in = {"user_id": current_user_context.user.id, "exam_attempt_id": attempt_id, "question_id": question_id, "answer_text": answer_text}
-            updated_answer = crud_user_answer.create(db, obj_in=user_answer_in)
-
-        return updated_answer
-
-    def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttempt:
-        attempt = crud_exam_attempt.get(db, id=attempt_id)
-        if not attempt:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
-
-        self._can_submit_answer_or_exam(db, current_user_context, attempt)
-
-        exam = crud_exam.get(db, id=attempt.exam_id)
-        if not exam:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found for this attempt.")
-
-        score, passed = self._calculate_score(db, attempt, exam)
-        attempt_update = ExamAttemptUpdate(end_time=datetime.now(), score=score, passed=passed, status=ExamAttemptStatusEnum.COMPLETED)
-        updated_attempt = crud_exam_attempt.update(db, db_obj=attempt, obj_in=attempt_update)
-
-        return updated_attempt
-
-    def _calculate_score(self, db: Session, attempt: ExamAttempt, exam: Exam) -> Any:
+    def _calculate_score(self, db: Session, attempt: ExamAttempt, exam: Exam) -> Tuple[float, bool]:
         total_score = 0.0
         total_possible_points = 0
-        questions = crud_question.get_by_exam(db, exam_id=exam.id)
+
+        questions = crud_question.get_questions_by_exam(db, exam_id=exam.id)
         user_answers = crud_user_answer.get_all_by_attempt(db, exam_attempt_id=attempt.id)
         user_answers_map = {ans.question_id: ans for ans in user_answers}
 
@@ -132,47 +113,159 @@ class ExamAttemptService:
 
             if user_answer:
                 is_correct = False
-                if question.question_type == QuestionTypeEnum.MULTIPLE_CHOICE or question.question_type == QuestionTypeEnum.TRUE_FALSE:
-                    if user_answer.answer_text == question.correct_answer:
-                        is_correct = True
+                if question.question_type in [QuestionTypeEnum.MULTIPLE_CHOICE, QuestionTypeEnum.TRUE_FALSE]:
+                    is_correct = user_answer.answer_text == question.correct_answer
 
                 score = question.points if is_correct else 0.0
-                total_score += score if is_correct else 0
+                total_score += score
 
-                update_data = UserAnswerUpdate(
-                    is_correct=is_correct,
-                    score=score
-                )
+                update_data = UserAnswerUpdate(is_correct=is_correct, score=score)
                 crud_user_answer.update(db, db_obj=user_answer, obj_in=update_data)
 
-        if total_possible_points == 0:
-            final_score_percentage = 0.0
-        else:
-            final_score_percentage = (total_score / total_possible_points) * 100
-
-        passed = False
-        if exam.pass_percentage is not None and final_score_percentage >= exam.pass_percentage:
-            passed = True
+        final_score_percentage = (total_score / total_possible_points * 100) if total_possible_points > 0 else 0.0
+        passed = exam.pass_percentage is not None and final_score_percentage >= exam.pass_percentage
 
         return total_score, passed
+
+    def start_exam_attempt(self, db: Session, exam_id: int, current_user_context: UserContext) -> ExamAttempt:
+        exam = crud_exam.get(db, id=exam_id)
+        if not exam:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
+
+        self._require_student_enrollment_in_exam(db, current_user_context, exam)
+
+        existing_attempts = crud_exam_attempt.get_by_user_and_exam(
+            db,
+            user_id=current_user_context.user.id,
+            exam_id=exam_id
+        )
+
+        if not exam.allow_multiple_attempts and existing_attempts:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You have already attempted this exam and multiple attempts are not allowed."
+            )
+
+        attempt_in = ExamAttemptCreate(
+            user_id=current_user_context.user.id,
+            exam_id=exam_id,
+            start_time=datetime.now()
+        )
+        new_attempt = crud_exam_attempt.create(db, obj_in=attempt_in)
+        db.flush()
+
+        return new_attempt
+
+    def submit_answer(self, db: Session, attempt_id: int, question_id: int,
+                     answer_text: str, current_user_context: UserContext) -> UserAnswer:
+        attempt = crud_exam_attempt.get(db, id=attempt_id)
+        if not attempt:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
+
+        self._require_attempt_ownership_and_in_progress(current_user_context, attempt)
+
+        question = crud_question.get(db, id=question_id)
+        if not question:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
+
+        self._validate_question_belongs_to_exam(question, attempt)
+
+        existing_answer = crud_user_answer.get_by_attempt_and_question(
+            db,
+            exam_attempt_id=attempt_id,
+            question_id=question_id
+        )
+
+        if existing_answer:
+            answer_in = UserAnswerUpdate(answer_text=answer_text)
+            updated_answer = crud_user_answer.update(db, db_obj=existing_answer, obj_in=answer_in)
+        else:
+            answer_in = UserAnswerCreate(
+                user_id=current_user_context.user.id,
+                exam_attempt_id=attempt_id,
+                question_id=question_id,
+                answer_text=answer_text
+            )
+            updated_answer = crud_user_answer.create(db, obj_in=answer_in)
+
+        return updated_answer
+
+    def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttempt:
+        attempt = crud_exam_attempt.get(db, id=attempt_id)
+        if not attempt:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
+
+        self._require_attempt_ownership_and_in_progress(current_user_context, attempt)
+
+        exam = crud_exam.get(db, id=attempt.exam_id)
+        if not exam:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found for this attempt.")
+
+        score, passed = self._calculate_score(db, attempt, exam)
+
+        attempt_update = ExamAttemptUpdate(
+            end_time=datetime.now(),
+            score=score,
+            passed=passed,
+            status=ExamAttemptStatusEnum.COMPLETED
+        )
+        updated_attempt = crud_exam_attempt.update(db, db_obj=attempt, obj_in=attempt_update)
+
+        return updated_attempt
 
     def get_exam_attempt(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttempt:
         attempt = crud_exam_attempt.get(db, id=attempt_id)
         if not attempt:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
 
-        self._can_view_exam_attempt(db, current_user_context, attempt)
-
+        self._require_attempt_view_permission(db, current_user_context, attempt)
         return attempt
 
     def get_user_exam_attempts(self, db: Session, user_id: int, current_user_context: UserContext) -> List[ExamAttempt]:
-        if user_id != current_user_context.user.id and current_user_context.role.name == RoleEnum.STUDENT:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own exam attempts.")
-
-        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and user_id != current_user_context.user.id:
-            pass
+        if user_id != current_user_context.user.id:
+            if permission_helper.is_student(current_user_context):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only view your own exam attempts."
+                )
 
         attempts = crud_exam_attempt.get_all_by_user(db, user_id=user_id)
+
+        if not permission_helper.is_super_admin(current_user_context) and user_id != current_user_context.user.id:
+            filtered_attempts = []
+            for attempt in attempts:
+                exam = crud_exam.get(db, id=attempt.exam_id)
+                if exam:
+                    course = self._get_course_from_exam(db, exam)
+                    if course and permission_helper.can_view_course(current_user_context, course):
+                        filtered_attempts.append(attempt)
+            return filtered_attempts
+
         return attempts
+
+    def get_exam_attempts_by_exam(self, db: Session, exam_id: int,
+                                 current_user_context: UserContext) -> List[ExamAttempt]:
+        exam = crud_exam.get(db, id=exam_id)
+        if not exam:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
+
+        course = self._get_course_from_exam(db, exam)
+        if course:
+            permission_helper.require_course_view_permission(current_user_context, course)
+        elif not permission_helper.is_super_admin(current_user_context):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view attempts for this exam."
+            )
+
+        if permission_helper.is_student(current_user_context):
+            return crud_exam_attempt.get_by_user_and_exam(
+                db,
+                user_id=current_user_context.user.id,
+                exam_id=exam_id
+            )
+
+        return crud_exam_attempt.get_all_by_exam(db, exam_id=exam_id)
+
 
 exam_attempt_service = ExamAttemptService()
