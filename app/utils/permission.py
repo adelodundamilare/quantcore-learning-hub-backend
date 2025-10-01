@@ -65,6 +65,8 @@ class PermissionHelper:
             return True
         return False
 
+
+
     @staticmethod
     def can_view_course(context: UserContext, course: Course) -> bool:
         if PermissionHelper.is_super_admin(context):
