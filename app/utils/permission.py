@@ -10,7 +10,7 @@ from app.crud.role import role as crud_role
 from app.crud.user import user as crud_user
 
 
-class PermissionService:
+class PermissionHelper:
     @staticmethod
     def is_super_admin(context: UserContext) -> bool:
         return context.role.name == RoleEnum.SUPER_ADMIN # or admin or member
@@ -41,52 +41,52 @@ class PermissionService:
 
     @staticmethod
     def can_manage_school_resources(context: UserContext, school_id: int) -> bool:
-        if PermissionService.is_super_admin(context):
+        if PermissionHelper.is_super_admin(context):
             return True
-        return PermissionService.belongs_to_school(context, school_id) and (
-            PermissionService.is_school_admin(context) or PermissionService.is_teacher(context)
+        return PermissionHelper.belongs_to_school(context, school_id) and (
+            PermissionHelper.is_school_admin(context) or PermissionHelper.is_teacher(context)
         )
 
     @staticmethod
     def can_view_school_resources(context: UserContext, school_id: int) -> bool:
-        if PermissionService.is_super_admin(context):
+        if PermissionHelper.is_super_admin(context):
             return True
-        return PermissionService.belongs_to_school(context, school_id)
+        return PermissionHelper.belongs_to_school(context, school_id)
 
     @staticmethod
     def can_manage_course(context: UserContext, course: Course) -> bool:
-        if PermissionService.is_super_admin(context):
+        if PermissionHelper.is_super_admin(context):
             return True
-        if not PermissionService.belongs_to_school(context, course.school_id):
+        if not PermissionHelper.belongs_to_school(context, course.school_id):
             return False
-        if PermissionService.is_school_admin(context):
+        if PermissionHelper.is_school_admin(context):
             return True
-        if PermissionService.is_teacher(context) and PermissionService.is_teacher_of_course(context.user, course):
+        if PermissionHelper.is_teacher(context) and PermissionHelper.is_teacher_of_course(context.user, course):
             return True
         return False
 
     @staticmethod
     def can_view_course(context: UserContext, course: Course) -> bool:
-        if PermissionService.is_super_admin(context):
+        if PermissionHelper.is_super_admin(context):
             return True
-        if not PermissionService.belongs_to_school(context, course.school_id):
+        if not PermissionHelper.belongs_to_school(context, course.school_id):
             return False
-        if PermissionService.is_school_admin(context):
+        if PermissionHelper.is_school_admin(context):
             return True
-        if PermissionService.is_teacher(context) and PermissionService.is_teacher_of_course(context.user, course):
+        if PermissionHelper.is_teacher(context) and PermissionHelper.is_teacher_of_course(context.user, course):
             return True
-        if PermissionService.is_student(context) and PermissionService.is_student_of_course(context.user, course):
+        if PermissionHelper.is_student(context) and PermissionHelper.is_student_of_course(context.user, course):
             return True
         return False
 
     @staticmethod
     def require_not_student(context: UserContext, error_message: str = "Students cannot perform this action."):
-        if PermissionService.is_student(context):
+        if PermissionHelper.is_student(context):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
 
     @staticmethod
     def require_course_management_permission(context: UserContext, course: Course):
-        if not PermissionService.can_manage_course(context, course):
+        if not PermissionHelper.can_manage_course(context, course):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to manage this course."
@@ -94,7 +94,7 @@ class PermissionService:
 
     @staticmethod
     def require_course_view_permission(context: UserContext, course: Course):
-        if not PermissionService.can_view_course(context, course):
+        if not PermissionHelper.can_view_course(context, course):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to view this course."
@@ -102,7 +102,7 @@ class PermissionService:
 
     @staticmethod
     def require_school_management_permission(context: UserContext, school_id: int):
-        if not PermissionService.can_manage_school_resources(context, school_id):
+        if not PermissionHelper.can_manage_school_resources(context, school_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to manage resources in this school."
@@ -110,7 +110,7 @@ class PermissionService:
 
     @staticmethod
     def require_school_view_permission(context: UserContext, school_id: int):
-        if not PermissionService.can_view_school_resources(context, school_id):
+        if not PermissionHelper.can_view_school_resources(context, school_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to view resources in this school."
@@ -136,7 +136,7 @@ class PermissionService:
 
     @staticmethod
     def get_school_id_for_operation(context: UserContext, provided_school_id: Optional[int]) -> int:
-        if PermissionService.is_super_admin(context):
+        if PermissionHelper.is_super_admin(context):
             if not provided_school_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -157,4 +157,4 @@ class PermissionService:
             return context.school.id
 
 
-permission_helper = PermissionService()
+permission_helper = PermissionHelper()
