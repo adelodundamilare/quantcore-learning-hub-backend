@@ -13,6 +13,8 @@ class QuestionBase(BaseModel):
     correct_answer: Optional[int] = None # Stores the index of the correct option
     points: int = Field(default=1)
 
+    model_config = ConfigDict(use_enum_values=True)
+
 class QuestionCreate(QuestionBase):
     pass
 

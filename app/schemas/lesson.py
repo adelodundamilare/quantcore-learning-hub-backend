@@ -10,6 +10,8 @@ class LessonBase(BaseModel):
     duration: int = Field(default=0) # Duration in minutes
     order: int = Field(default=0)
 
+    model_config = ConfigDict(use_enum_values=True)
+
 class LessonCreate(LessonBase):
     curriculum_id: int
 

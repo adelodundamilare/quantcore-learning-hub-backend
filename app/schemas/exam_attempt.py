@@ -14,6 +14,8 @@ class ExamAttemptBase(BaseModel):
     passed: Optional[bool] = None
     status: ExamAttemptStatusEnum = Field(default=ExamAttemptStatusEnum.IN_PROGRESS)
 
+    model_config = ConfigDict(use_enum_values=True)
+
 class ExamAttemptCreate(ExamAttemptBase):
     pass
 

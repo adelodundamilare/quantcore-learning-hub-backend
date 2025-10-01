@@ -54,7 +54,7 @@ class UserContext(BaseModel):
     school: School
     role: Role
     user: User
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 class UserInvite(BaseModel):
     """Schema for inviting a new user to a school."""
@@ -62,8 +62,9 @@ class UserInvite(BaseModel):
     email: EmailStr
     role_name: RoleEnum
 
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        use_enum_values=True,
+        json_schema_extra={
             "properties": {
                 "role_name": {
                     "enum": ["teacher", "student", "admin", "super_admin"],
@@ -76,6 +77,7 @@ class UserInvite(BaseModel):
                 "role_name": "student"
             }
         }
+    )
 
     @field_validator('role_name')
     def validate_role(cls, v):

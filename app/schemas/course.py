@@ -12,6 +12,8 @@ class CourseBase(BaseModel):
     level: CourseLevelEnum = Field(default=CourseLevelEnum.BEGINNER)
     is_active: bool = True
 
+    model_config = ConfigDict(use_enum_values=True)
+
 class CourseCreate(CourseBase):
     school_id: Optional[int] = None
 
