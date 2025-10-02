@@ -31,3 +31,5 @@ class User(Base):
     enrolled_courses = relationship("Course", secondary=course_students_association, back_populates="students")
     exam_attempts = relationship("ExamAttempt", back_populates="user", cascade="all, delete-orphan")
     user_answers = relationship("UserAnswer", back_populates="user", cascade="all, delete-orphan")
+    course_enrollments = relationship("CourseEnrollment", back_populates="user")
+

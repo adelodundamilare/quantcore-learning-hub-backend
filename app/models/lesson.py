@@ -19,3 +19,5 @@ class Lesson(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     curriculum = relationship("Curriculum", back_populates="lessons")
+    progress_records = relationship("LessonProgress", back_populates="lesson")
+
