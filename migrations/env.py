@@ -17,6 +17,10 @@ from app.models.one_time_token import OneTimeToken
 from app.models.notification import Notification
 from app.models.token_denylist import TokenDenylist
 from app.models.course import Course
+from app.models.lesson import Lesson
+from app.models.lesson_progress import LessonProgress
+from app.models.course_enrollment import CourseEnrollment
+from app.models.curriculum import Curriculum
 from app.models.exam_attempt import ExamAttempt
 from app.models.user_answer import UserAnswer
 from app.models.question import Question
