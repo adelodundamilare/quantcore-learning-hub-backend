@@ -20,6 +20,8 @@ class CourseEnrollment(Base):
     user = relationship("User", back_populates="course_enrollments")
     course = relationship("Course", back_populates="enrollments")
     lesson_progress = relationship("LessonProgress", back_populates="enrollment", cascade="all, delete-orphan")
+    rewards = relationship("CourseReward", back_populates="enrollment", cascade="all, delete-orphan")  # Add this
+
 
     def calculate_progress(self):
         if not self.lesson_progress:

@@ -38,4 +38,17 @@ class Course(Base):
     curriculums = relationship("Curriculum", back_populates="course", cascade="all, delete-orphan")
     exams = relationship("Exam", back_populates="course", cascade="all, delete-orphan")
     enrollments = relationship("CourseEnrollment", back_populates="course")
+    ratings = relationship("CourseRating", back_populates="course")
+
+    @property
+    def average_rating(self):
+        if not self.ratings:
+            return 0.0
+        total = sum(r.rating for r in self.ratings if not r.deleted_at)
+        active_ratings = [r for r in self.ratings if not r.deleted_at]
+        return round(total / len(active_ratings), 2) if active_ratings else 0.0
+
+    @property
+    def rating_count(self):
+        return len([r for r in self.ratings if not r.deleted_at])
 

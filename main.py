@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam
+from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
 
@@ -30,6 +30,8 @@ app.include_router(account.router, prefix="/account", tags=["Account"])
 app.include_router(course.router, prefix="/courses", tags=["Courses"])
 app.include_router(curriculum.router, tags=["Curriculum"])
 app.include_router(exam.router, prefix="/exams", tags=["Exams"])
+app.include_router(course_progress.router, tags=["Course Progress"])
+app.include_router(reward_rating.router, tags=["Reward & Rating"])
 
 app.include_router(role.router, prefix="/roles", tags=["Roles"])
 app.include_router(permission.router, prefix="/permissions", tags=["Permissions"])

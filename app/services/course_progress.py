@@ -7,8 +7,10 @@ from app.crud.course_enrollment import course_enrollment as crud_enrollment
 from app.crud.lesson_progress import lesson_progress as crud_lesson_progress
 from app.crud.course import course as crud_course
 from app.crud.lesson import lesson as crud_lesson
+from app.crud.course_reward import course_reward as crud_reward
 from app.schemas.user import UserContext
 from app.schemas.lesson_progress import LessonProgressCreate
+from app.schemas.reward_rating import CourseRewardCreate
 from app.models.course_enrollment import EnrollmentStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
 
@@ -31,9 +33,21 @@ class CourseProgressService:
         if progress >= 100 and enrollment.status != EnrollmentStatusEnum.COMPLETED:
             enrollment.status = EnrollmentStatusEnum.COMPLETED
             enrollment.completed_at = datetime.now()
+            crud_enrollment.update(db, db_obj=enrollment, obj_in={})
 
-        crud_enrollment.update(db, db_obj=enrollment, obj_in={})
-
+            existing_rewards = crud_reward.get_by_enrollment(db, enrollment_id=enrollment.id)
+            if not existing_rewards:
+                reward_in = CourseRewardCreate(
+                    enrollment_id=enrollment.id,
+                    reward_type="completion",
+                    reward_title=f"Completed {enrollment.course.title}",
+                    reward_description=f"Congratulations on completing {enrollment.course.title}!",
+                    points=100,
+                    awarded_at=datetime.now()
+                )
+                crud_reward.create(db, obj_in=reward_in)
+        else:
+            crud_enrollment.update(db, db_obj=enrollment, obj_in={})
     def start_course(self, db: Session, course_id: int, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):
             raise HTTPException(
