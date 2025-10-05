@@ -8,13 +8,13 @@ from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
-from app.schemas.school import SchoolCreate
 from app.schemas.user import  UserContext, UserInvite
 from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash
 from app.services.email import EmailService
 from app.services.notification import notification_service
+from app.services.course import course_service
 
 class UserService:
 
@@ -43,7 +43,7 @@ class UserService:
         return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=teacher_role.id, skip=skip, limit=limit)
 
     def invite_user(
-        self, db: Session, *, invited_by: User, school: School, invite_in: UserInvite
+        self, db: Session, *, school: School, invite_in: UserInvite, current_user_context: UserContext
     ) -> User:
         """Invites a user to a school as a teacher or student."""
         role_to_assign = crud_role.get_by_name(db, name=invite_in.role_name)
@@ -75,6 +75,14 @@ class UserService:
             crud_user.add_user_to_school(
                 db, user=existing_user, school=school, role=role_to_assign
             )
+
+            if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT:
+                for course_id in invite_in.course_ids:
+                    try:
+                        course_service.enroll_student(db, course_id=course_id, user_id=existing_user.id, current_user_context=current_user_context)
+                    except HTTPException as e:
+                        print(f"Warning: Could not enroll existing user {existing_user.id} in course {course_id}: {e.detail}")
+
             EmailService.send_email(
                 to_email=existing_user.email,
                 subject=f"You've been added to {school.name}!",
@@ -110,6 +118,13 @@ class UserService:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"An error occurred during the invitation process: {e}",
                 )
+
+            if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT:
+                for course_id in invite_in.course_ids:
+                    try:
+                        course_service.enroll_student(db, course_id=course_id, user_id=new_user.id, current_user_context=current_user_context)
+                    except HTTPException as e:
+                        print(f"Warning: Could not enroll new user {new_user.id} in course {course_id}: {e.detail}")
 
             EmailService.send_email(
                 to_email=new_user.email,

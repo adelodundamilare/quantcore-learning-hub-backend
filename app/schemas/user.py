@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, model_validator
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 from .school import School
 from .role import Role
@@ -57,10 +57,10 @@ class UserContext(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 class UserInvite(BaseModel):
-    """Schema for inviting a new user to a school."""
-    full_name: str
     email: EmailStr
+    full_name: str
     role_name: RoleEnum
+    course_ids: Optional[List[int]] = None
 
     model_config = ConfigDict(
         use_enum_values=True,

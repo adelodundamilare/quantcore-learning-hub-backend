@@ -73,7 +73,7 @@ def invite_user(
         )
 
     invited_user = user_service.invite_user(
-        db, invited_by=context.user, school=context.school, invite_in=invite_in
+        db, current_user_context=context, school=context.school, invite_in=invite_in
     )
 
     return APIResponse(message="User invited successfully", data=User.model_validate(invited_user))
