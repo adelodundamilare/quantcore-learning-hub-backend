@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.schemas.user import UserContext
 from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
+from app.core.constants import CourseLevelEnum
 
 router = APIRouter()
 
@@ -33,9 +34,10 @@ def get_all_exams(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    level: Optional[CourseLevelEnum] = Query(None)
 ):
-    exams = exam_service.get_all_exams(db, current_user_context=context, skip=skip, limit=limit)
+    exams = exam_service.get_all_exams(db, current_user_context=context, skip=skip, limit=limit, level=level)
     return APIResponse(message="Exams retrieved successfully", data=[Exam.model_validate(e) for e in exams])
 
 

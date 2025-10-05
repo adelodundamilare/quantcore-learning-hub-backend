@@ -51,7 +51,7 @@ class Exam(ExamBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
-    level: Optional[CourseLevelEnum] = None # Added for dynamic retrieval
+    level: Optional[CourseLevelEnum] = None
     questions: List[Question] = []
     attempts: List[ExamAttempt] = []
 

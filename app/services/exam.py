@@ -10,6 +10,7 @@ from app.schemas.exam import ExamCreate, ExamUpdate, Exam
 from app.schemas.question import QuestionCreate, QuestionUpdate, Question
 from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
+from app.core.constants import CourseLevelEnum
 
 
 class ExamService:
@@ -145,23 +146,26 @@ class ExamService:
         deleted_exam = crud_exam.remove(db, id=exam_id)
         return deleted_exam
 
-    def get_all_exams(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Exam]:
-        if permission_helper.is_super_admin(current_user_context):
-            return crud_exam.get_multi(db, skip=skip, limit=limit)
+    def get_all_exams(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100, level: Optional[CourseLevelEnum] = None) -> List[Exam]:
+        is_super_admin = permission_helper.is_super_admin(current_user_context)
 
-        course_ids, curriculum_ids = self._get_user_course_and_curriculum_ids(db, current_user_context)
+        course_ids = None
+        curriculum_ids = None
 
-        if course_ids is None:
-            return crud_exam.get_multi(db, skip=skip, limit=limit)
+        if not is_super_admin:
+            course_ids, curriculum_ids = self._get_user_course_and_curriculum_ids(db, current_user_context)
+            if not course_ids and not curriculum_ids:
+                return []
 
-        if not course_ids and not curriculum_ids:
-            return []
-
-        exams_by_course = crud_exam.get_exams_by_course_ids(db, course_ids=course_ids) if course_ids else []
-        exams_by_curriculum = crud_exam.get_exams_by_curriculum_ids(db, curriculum_ids=curriculum_ids) if curriculum_ids else []
-
-        unique_exams = {exam.id: exam for exam in exams_by_course + exams_by_curriculum}
-        return list(unique_exams.values())[skip:skip + limit]
+        return crud_exam.get_multi_filtered(
+            db,
+            skip=skip,
+            limit=limit,
+            level=level,
+            course_ids=course_ids,
+            curriculum_ids=curriculum_ids,
+            is_super_admin=is_super_admin
+        )
 
     def create_question(self, db: Session, question_in: QuestionCreate, current_user_context: UserContext) -> Question:
         exam = crud_exam.get(db, id=question_in.exam_id)
