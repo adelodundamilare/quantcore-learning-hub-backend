@@ -11,7 +11,7 @@ from app.utils import deps
 
 router = APIRouter()
 
-@router.post("/", response_model=APIResponse[None], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_CREATE))])
+@router.post("/", response_model=APIResponse[None])
 def create_school(
     *,
     db: Session = Depends(deps.get_transactional_db),
@@ -26,7 +26,7 @@ def create_school(
 
     return APIResponse(message="School and admin created successfully")
 
-@router.get("/{school_id}", response_model=APIResponse[School], dependencies=[Depends(deps.require_permission(PermissionEnum.SCHOOL_READ))])
+@router.get("/{school_id}", response_model=APIResponse[School])
 def read_school(
     *,
     db: Session = Depends(deps.get_db),
