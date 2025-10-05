@@ -2,6 +2,7 @@ from wsgiref.validate import validator
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+from app.core.constants import CourseLevelEnum
 
 from app.schemas.question import Question
 from app.schemas.exam_attempt import ExamAttempt
@@ -50,6 +51,7 @@ class Exam(ExamBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    level: Optional[CourseLevelEnum] = None # Added for dynamic retrieval
     questions: List[Question] = []
     attempts: List[ExamAttempt] = []
 

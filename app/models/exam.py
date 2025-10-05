@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, F
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+from app.core.constants import CourseLevelEnum
 
 class Exam(Base):
     __tablename__ = "exams"
@@ -24,3 +25,11 @@ class Exam(Base):
     curriculum = relationship("Curriculum", back_populates="exams")
     questions = relationship("Question", back_populates="exam", cascade="all, delete-orphan")
     attempts = relationship("ExamAttempt", back_populates="exam", cascade="all, delete-orphan")
+
+    @property
+    def level(self):
+        if self.course:
+            return self.course.level
+        if self.curriculum and self.curriculum.course:
+            return self.curriculum.course.level
+        return None
