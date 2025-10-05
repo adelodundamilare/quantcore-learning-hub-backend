@@ -28,5 +28,6 @@ class Course(CourseBase):
     id: int
     school_id: int
     total_enrolled_students: int = 0 # Added for dynamic retrieval
+    average_rating: float = 0.0 # Added for dynamic retrieval
     model_config = ConfigDict(from_attributes=True)
     curriculums: List[Curriculum] = []
