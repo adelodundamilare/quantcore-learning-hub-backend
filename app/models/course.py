@@ -52,3 +52,7 @@ class Course(Base):
     def rating_count(self):
         return len([r for r in self.ratings if not r.deleted_at])
 
+    @property
+    def total_enrolled_students(self):
+        return len(self.students)
+
