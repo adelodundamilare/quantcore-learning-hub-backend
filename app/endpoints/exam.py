@@ -1,6 +1,7 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
+from app.core.constants import CourseLevelEnum
 
 from app.schemas.response import APIResponse
 from app.utils import deps
@@ -14,7 +15,6 @@ from app.schemas.user import UserContext
 from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from app.core.constants import CourseLevelEnum
 
 router = APIRouter()
 

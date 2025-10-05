@@ -81,7 +81,8 @@ class CRUDExam(CRUDBase[Exam, ExamCreate, ExamUpdate]):
     ) -> List[Exam]:
         query = self._query_active(db)
 
-        if level:
+        # Apply level filter if provided and not CourseLevelEnum.ALL
+        if level and level != CourseLevelEnum.ALL:
             query = query.outerjoin(Course, Exam.course_id == Course.id)\
                          .outerjoin(Curriculum, Exam.curriculum_id == Curriculum.id)
 
