@@ -1,5 +1,8 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, status
+from fastapi.params import Query
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.schemas.response import APIResponse
 from app.utils import deps
@@ -14,9 +17,11 @@ def get_school_report(
     *,
     db: Session = Depends(deps.get_db),
     school_id: int,
-    context: UserContext = Depends(deps.get_current_user_with_context)
+    context: UserContext = Depends(deps.get_current_user_with_context),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None)
 ):
-    report_data = report_service.get_school_report(db, school_id=school_id, current_user_context=context)
+    report_data = report_service.get_school_report(db, school_id=school_id, current_user_context=context, start_date=start_date, end_date=end_date)
     return APIResponse(message="School report retrieved successfully", data=report_data)
 
 
@@ -27,7 +32,9 @@ def get_school_leaderboard(
     school_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context),
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None)
 ):
-    leaderboard_data = report_service.get_school_leaderboard(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit)
+    leaderboard_data = report_service.get_school_leaderboard(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit, start_date=start_date, end_date=end_date)
     return APIResponse(message="School leaderboard retrieved successfully", data=leaderboard_data)

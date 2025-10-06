@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 
 from app.schemas.user import UserContext
 from app.schemas.report import MostActiveUserSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema
@@ -12,21 +13,21 @@ from app.models.user import User
 from fastapi import HTTPException, status
 
 class ReportService:
-    def get_school_report(self, db: Session, school_id: int, current_user_context: UserContext) -> SchoolReportSchema:
+    def get_school_report(self, db: Session, school_id: int, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> SchoolReportSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
-        total_courses_count = crud_course.get_courses_by_school_count(db, school_id=school_id)
+        total_courses_count = crud_course.get_courses_by_school_count(db, school_id=school_id, start_date=start_date, end_date=end_date)
 
         student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
         if not student_role:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+        
+        total_enrolled_students_count = crud_user.get_users_by_school_and_role_count(db, school_id=school_id, role_id=student_role.id, start_date=start_date, end_date=end_date)
 
-        total_enrolled_students_count = crud_user.get_users_by_school_and_role_count(db, school_id=school_id, role_id=student_role.id)
-
-        top_performer_data = crud_user.get_top_performer_by_exam_score(db, school_id=school_id)
+        top_performer_data = crud_user.get_top_performer_by_exam_score(db, school_id=school_id, start_date=start_date, end_date=end_date)
         top_performer = TopPerformerSchema(**top_performer_data._asdict()) if top_performer_data else None
 
-        most_active_user_data = crud_user.get_most_active_user_by_lessons_completed(db, school_id=school_id)
+        most_active_user_data = crud_user.get_most_active_user_by_lessons_completed(db, school_id=school_id, start_date=start_date, end_date=end_date)
         most_active_user = MostActiveUserSchema(**most_active_user_data._asdict()) if most_active_user_data else None
 
         return SchoolReportSchema(
@@ -37,18 +38,18 @@ class ReportService:
         )
 
     def get_school_leaderboard(
-        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100
+        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
     ) -> LeaderboardResponseSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
-        leaderboard_data = crud_user.get_leaderboard_data_for_school(db, school_id=school_id, skip=skip, limit=limit)
-
+        leaderboard_data = crud_user.get_leaderboard_data_for_school(db, school_id=school_id, skip=skip, limit=limit, start_date=start_date, end_date=end_date)
+        
         student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
         if not student_role:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
 
         total_students_in_school = crud_user.get_users_by_school_and_role_count(
-            db, school_id=school_id, role_id=student_role.id
+            db, school_id=school_id, role_id=student_role.id, start_date=start_date, end_date=end_date
         )
 
         return LeaderboardResponseSchema(

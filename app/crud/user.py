@@ -1,6 +1,7 @@
 from typing import Any, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+from datetime import datetime
 from app.crud.base import CRUDBase
 from app.models.course_enrollment import CourseEnrollment
 from app.models.user import User
@@ -55,62 +56,75 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
         db.execute(stmt)
 
-    def get_users_by_school_and_role_count(self, db: Session, *, school_id: int, role_id: int) -> int:
-        return (
-            db.query(User)
-            .join(user_school_association, User.id == user_school_association.c.user_id)
+    def get_users_by_school_and_role_count(self, db: Session, *, school_id: int, role_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        query = db.query(User)\
+            .join(user_school_association, User.id == user_school_association.c.user_id)\
             .filter(
                 user_school_association.c.school_id == school_id,
                 user_school_association.c.role_id == role_id
             )
-            .count()
-        )
+        if start_date:
+            query = query.filter(User.created_at >= start_date)
+        if end_date:
+            query = query.filter(User.created_at <= end_date)
+        return query.count()
 
-    def get_users_by_school_count(self, db: Session, *, school_id: int) -> int:
-        return (
-            db.query(User)
-            .join(user_school_association, User.id == user_school_association.c.user_id)
+    def get_users_by_school_count(self, db: Session, *, school_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        query = db.query(User)\
+            .join(user_school_association, User.id == user_school_association.c.user_id)\
             .filter(user_school_association.c.school_id == school_id)
-            .count()
-        )
+        if start_date:
+            query = query.filter(User.created_at >= start_date)
+        if end_date:
+            query = query.filter(User.created_at <= end_date)
+        return query.count()
 
     def get_leaderboard_data_for_school(
-        self, db: Session, school_id: int, skip: int = 0, limit: int = 100
+        self, db: Session, school_id: int, skip: int = 0, limit: int = 100, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
     ) -> List[dict]:
         student_role = db.query(Role).filter(Role.name == "student").first()
         if not student_role:
             return []
 
-        lessons_completed_sq = (
+        lessons_completed_sq_query = (
             db.query(
                 CourseEnrollment.user_id,
                 func.count(LessonProgress.id).label("lessons_completed_count")
             )
             .join(CourseEnrollment, LessonProgress.enrollment_id == CourseEnrollment.id)
             .filter(LessonProgress.is_completed == True)
-            .group_by(CourseEnrollment.user_id)
-            .subquery()
         )
+        if start_date:
+            lessons_completed_sq_query = lessons_completed_sq_query.filter(LessonProgress.created_at >= start_date)
+        if end_date:
+            lessons_completed_sq_query = lessons_completed_sq_query.filter(LessonProgress.created_at <= end_date)
+        lessons_completed_sq = lessons_completed_sq_query.group_by(CourseEnrollment.user_id).subquery()
 
-        accumulated_exam_score_sq = (
+        accumulated_exam_score_sq_query = (
             db.query(
                 ExamAttempt.user_id,
                 func.sum(ExamAttempt.score).label("accumulated_exam_score_sum")
             )
             .filter(ExamAttempt.status == "completed")
-            .group_by(ExamAttempt.user_id)
-            .subquery()
         )
+        if start_date:
+            accumulated_exam_score_sq_query = accumulated_exam_score_sq_query.filter(ExamAttempt.created_at >= start_date)
+        if end_date:
+            accumulated_exam_score_sq_query = accumulated_exam_score_sq_query.filter(ExamAttempt.created_at <= end_date)
+        accumulated_exam_score_sq = accumulated_exam_score_sq_query.group_by(ExamAttempt.user_id).subquery()
 
-        total_rewards_sq = (
+        total_rewards_sq_query = (
             db.query(
                 CourseEnrollment.user_id,
                 func.sum(CourseReward.points).label("total_rewards_sum")
             )
             .join(CourseEnrollment, CourseReward.enrollment_id == CourseEnrollment.id)
-            .group_by(CourseEnrollment.user_id)
-            .subquery()
         )
+        if start_date:
+            total_rewards_sq_query = total_rewards_sq_query.filter(CourseReward.awarded_at >= start_date)
+        if end_date:
+            total_rewards_sq_query = total_rewards_sq_query.filter(CourseReward.awarded_at <= end_date)
+        total_rewards_sq = total_rewards_sq_query.group_by(CourseEnrollment.user_id).subquery()
 
         query = (
             db.query(
@@ -136,7 +150,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
 
         return query.all()
 
-    def get_top_performer_by_exam_score(self, db: Session, school_id: int) -> Optional[dict]:
+    def get_top_performer_by_exam_score(self, db: Session, school_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Optional[dict]:
         student_role = db.query(Role).filter(Role.name == "student").first()
         if not student_role:
             return None
@@ -155,13 +169,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             )
             .join(ExamAttempt, User.id == ExamAttempt.user_id)
             .filter(ExamAttempt.status == "completed")
-            .group_by(User.id, User.full_name, User.email)
-            .order_by(desc("accumulated_exam_score"))
-            .first()
         )
+        if start_date:
+            query = query.filter(ExamAttempt.created_at >= start_date)
+        if end_date:
+            query = query.filter(ExamAttempt.created_at <= end_date)
+        query = query.group_by(User.id, User.full_name, User.email)\
+            .order_by(desc("accumulated_exam_score"))\
+            .first()
         return query._asdict() if query else None
 
-    def get_most_active_user_by_lessons_completed(self, db: Session, school_id: int) -> Optional[dict]:
+    def get_most_active_user_by_lessons_completed(self, db: Session, school_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Optional[dict]:
         student_role = db.query(Role).filter(Role.name == "student").first()
         if not student_role:
             return None
@@ -181,10 +199,14 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(CourseEnrollment, User.id == CourseEnrollment.user_id)
             .join(LessonProgress, CourseEnrollment.id == LessonProgress.enrollment_id)
             .filter(LessonProgress.is_completed == True)
-            .group_by(User.id, User.full_name, User.email)
-            .order_by(desc("lessons_completed"))
-            .first()
         )
+        if start_date:
+            query = query.filter(LessonProgress.created_at >= start_date)
+        if end_date:
+            query = query.filter(LessonProgress.created_at <= end_date)
+        query = query.group_by(User.id, User.full_name, User.email)\
+            .order_by(desc("lessons_completed"))\
+            .first()
         return query._asdict() if query else None
 
 user = CRUDUser(User)

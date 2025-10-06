@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 
 from app.crud.base import CRUDBase
 from app.models.course import Course, course_teachers_association, course_students_association
@@ -115,12 +116,13 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             .all()
         )
 
-    def get_courses_by_school_count(self, db: Session, school_id: int) -> int:
-        return (
-            self._query_active(db)
-            .filter(Course.school_id == school_id)
-            .count()
-        )
+    def get_courses_by_school_count(self, db: Session, school_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        query = self._query_active(db).filter(Course.school_id == school_id)
+        if start_date:
+            query = query.filter(Course.created_at >= start_date)
+        if end_date:
+            query = query.filter(Course.created_at <= end_date)
+        return query.count()
 
 
 course = CRUDCourse(Course)
