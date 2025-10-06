@@ -1,9 +1,22 @@
 from pydantic import BaseModel, EmailStr
-from typing import List
+from typing import List, Optional
 
+class TopPerformerSchema(BaseModel):
+    user_id: int
+    full_name: str
+    email: EmailStr
+    accumulated_exam_score: float
+
+class MostActiveUserSchema(BaseModel):
+    user_id: int
+    full_name: str
+    email: EmailStr
+    lessons_completed: int
 class SchoolReportSchema(BaseModel):
     total_courses_count: int
     total_enrolled_students_count: int
+    top_performer: Optional[TopPerformerSchema] = None
+    most_active_user: Optional[MostActiveUserSchema] = None
 
 class LeaderboardEntrySchema(BaseModel):
     student_id: int
@@ -18,3 +31,4 @@ class LeaderboardResponseSchema(BaseModel):
     total: int
     skip: int
     limit: int
+

@@ -136,4 +136,55 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
 
         return query.all()
 
+    def get_top_performer_by_exam_score(self, db: Session, school_id: int) -> Optional[dict]:
+        student_role = db.query(Role).filter(Role.name == "student").first()
+        if not student_role:
+            return None
+
+        query = (
+            db.query(
+                User.id.label("user_id"),
+                User.full_name.label("full_name"),
+                User.email.label("email"),
+                func.sum(ExamAttempt.score).label("accumulated_exam_score")
+            )
+            .join(user_school_association, User.id == user_school_association.c.user_id)
+            .filter(
+                user_school_association.c.school_id == school_id,
+                user_school_association.c.role_id == student_role.id
+            )
+            .join(ExamAttempt, User.id == ExamAttempt.user_id)
+            .filter(ExamAttempt.status == "completed")
+            .group_by(User.id, User.full_name, User.email)
+            .order_by(desc("accumulated_exam_score"))
+            .first()
+        )
+        return query._asdict() if query else None
+
+    def get_most_active_user_by_lessons_completed(self, db: Session, school_id: int) -> Optional[dict]:
+        student_role = db.query(Role).filter(Role.name == "student").first()
+        if not student_role:
+            return None
+
+        query = (
+            db.query(
+                User.id.label("user_id"),
+                User.full_name.label("full_name"),
+                User.email.label("email"),
+                func.count(LessonProgress.id).label("lessons_completed")
+            )
+            .join(user_school_association, User.id == user_school_association.c.user_id)
+            .filter(
+                user_school_association.c.school_id == school_id,
+                user_school_association.c.role_id == student_role.id
+            )
+            .join(CourseEnrollment, User.id == CourseEnrollment.user_id)
+            .join(LessonProgress, CourseEnrollment.id == LessonProgress.enrollment_id)
+            .filter(LessonProgress.is_completed == True)
+            .group_by(User.id, User.full_name, User.email)
+            .order_by(desc("lessons_completed"))
+            .first()
+        )
+        return query._asdict() if query else None
+
 user = CRUDUser(User)
