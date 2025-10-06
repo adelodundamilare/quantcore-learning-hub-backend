@@ -1,13 +1,14 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.schemas.school import School, SchoolCreate
+from app.schemas.school import School, SchoolCreate, AdminSchoolDataSchema
 from app.core.constants import PermissionEnum
 from app.schemas.response import APIResponse
 from app.schemas.user import AdminSchoolInvite, User, UserContext
 from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
+from app.crud.base import PaginatedResponse
 
 router = APIRouter()
 
@@ -61,3 +62,15 @@ def get_school_teachers(
     """Retrieve all teachers for a specific school."""
     teachers = user_service.get_teachers_for_school(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit)
     return APIResponse(message="Teachers for school retrieved successfully", data=[User.model_validate(u) for u in teachers])
+
+
+@router.get("/admin/schools/report", response_model=APIResponse[PaginatedResponse[AdminSchoolDataSchema]])
+def get_admin_schools_report(
+    *,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context),
+    skip: int = 0,
+    limit: int = 100
+):
+    report_data = school_service.get_admin_schools_report(db, current_user_context=context, skip=skip, limit=limit)
+    return APIResponse(message="Admin schools report retrieved successfully", data=report_data)

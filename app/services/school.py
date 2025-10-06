@@ -6,8 +6,10 @@ from app.core.config import settings
 from app.crud.school import school as crud_school
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
-from app.schemas.school import SchoolCreate
-from app.schemas.user import UserCreate
+from app.schemas.school import SchoolCreate, AdminSchoolDataSchema
+from app.schemas.user import UserCreate, UserContext
+from app.crud.base import PaginatedResponse
+import math
 from app.models.school import School
 from app.core.security import get_password_hash
 from app.core.constants import RoleEnum
@@ -18,7 +20,6 @@ from app.models.one_time_token import TokenType
 import random
 
 class SchoolService:
-    """Service layer for school-related business logic."""
 
     def create_school_and_admin(
         self, db: Session, *, school_in: SchoolCreate, admin_in: UserCreate
@@ -39,14 +40,13 @@ class SchoolService:
         try:
             new_school = crud_school.create(db, obj_in=school_in, commit=False)
 
-            # temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
             hashed_password = get_password_hash(admin_in.password)
 
             admin_create_data = {
                 "full_name": admin_in.full_name,
                 "email": admin_in.email,
                 "hashed_password": hashed_password,
-                "is_active": False # Admin is not active until verified
+                "is_active": False
             }
 
             new_admin = crud_user.create(db, obj_in=admin_create_data, commit=False)
@@ -54,7 +54,6 @@ class SchoolService:
                 db, user=new_admin, school=new_school, role=school_admin_role
             )
 
-            # Generate and store verification code
             verification_code = str(random.randint(1000, 9999))
             expires_at = datetime.utcnow() + timedelta(minutes=settings.VERIFICATION_CODE_EXPIRE_MINUTES)
 
@@ -79,7 +78,7 @@ class SchoolService:
         EmailService.send_email(
             to_email=new_admin.email,
             subject=f"Welcome! Verify Your Account",
-            template_name="verify_account.html", # New template
+            template_name="verify_account.html",
             template_context={
                 'user_name': new_admin.full_name,
                 'verification_code': verification_code
@@ -90,9 +89,32 @@ class SchoolService:
             user_id=new_admin.id,
             message=f"Welcome! Your school {new_school.name} has been created. Please verify your account.",
             notification_type="account_verification",
-            link=f"/verify-account" # Example link
+            link=f"/verify-account"
         )
 
         return new_school
+
+    def get_admin_schools_report(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> PaginatedResponse[AdminSchoolDataSchema]:
+        if not current_user_context.role or current_user_context.role.name != RoleEnum.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Super Admin can access this report.")
+
+        schools_data = crud_school.get_admin_school_data(db, skip=skip, limit=limit)
+        
+        total_schools = crud_school.get_all_schools_count(db)
+
+        page = (skip // limit) + 1 if limit > 0 else 1
+        pages = math.ceil(total_schools / limit) if limit > 0 else 0
+        has_next = (skip + limit) < total_schools
+        has_previous = skip > 0
+
+        return PaginatedResponse(
+            items=[AdminSchoolDataSchema(**school_data._asdict()) for school_data in schools_data],
+            total=total_schools,
+            page=page,
+            size=limit,
+            pages=pages,
+            has_next=has_next,
+            has_previous=has_previous
+        )
 
 school_service = SchoolService()

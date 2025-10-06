@@ -1,18 +1,24 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
+from typing import List
 
 class SchoolBase(BaseModel):
-    """Base schema for a school."""
     name: str
 
 class SchoolCreate(SchoolBase):
-    """Schema for creating a school."""
     pass
 
 class SchoolUpdate(SchoolBase):
-    """Schema for updating a school."""
     name: str | None = None
 
 class School(SchoolBase):
-    """Schema for reading a school, includes the ID."""
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+class AdminSchoolDataSchema(BaseModel):
+    school_id: int
+    school_name: str
+    creator_name: str
+    creator_email: EmailStr
+    total_teachers: int
+    total_students: int
+    is_active: bool
