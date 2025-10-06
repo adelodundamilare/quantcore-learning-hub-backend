@@ -115,5 +115,12 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             .all()
         )
 
+    def get_courses_by_school_count(self, db: Session, school_id: int) -> int:
+        return (
+            self._query_active(db)
+            .filter(Course.school_id == school_id)
+            .count()
+        )
+
 
 course = CRUDCourse(Course)

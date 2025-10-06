@@ -51,4 +51,23 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
         db.execute(stmt)
 
+    def get_users_by_school_and_role_count(self, db: Session, *, school_id: int, role_id: int) -> int:
+        return (
+            db.query(User)
+            .join(user_school_association, User.id == user_school_association.c.user_id)
+            .filter(
+                user_school_association.c.school_id == school_id,
+                user_school_association.c.role_id == role_id
+            )
+            .count()
+        )
+
+    def get_users_by_school_count(self, db: Session, *, school_id: int) -> int:
+        return (
+            db.query(User)
+            .join(user_school_association, User.id == user_school_association.c.user_id)
+            .filter(user_school_association.c.school_id == school_id)
+            .count()
+        )
+
 user = CRUDUser(User)
