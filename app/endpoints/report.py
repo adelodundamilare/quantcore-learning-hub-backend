@@ -7,7 +7,7 @@ from datetime import datetime
 from app.schemas.response import APIResponse
 from app.utils import deps
 from app.schemas.user import UserContext
-from app.schemas.report import LeaderboardResponseSchema, SchoolReportSchema
+from app.schemas.report import AdminDashboardReportSchema, LeaderboardResponseSchema, SchoolReportSchema
 from app.services.report import report_service
 
 router = APIRouter()
@@ -38,3 +38,15 @@ def get_school_leaderboard(
 ):
     leaderboard_data = report_service.get_school_leaderboard(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit, start_date=start_date, end_date=end_date)
     return APIResponse(message="School leaderboard retrieved successfully", data=leaderboard_data)
+
+
+@router.get("/admin/dashboard/report", response_model=APIResponse[AdminDashboardReportSchema])
+def get_admin_dashboard_report(
+    *,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None)
+):
+    report_data = report_service.get_admin_dashboard_report(db, current_user_context=context, start_date=start_date, end_date=end_date)
+    return APIResponse(message="Admin dashboard report retrieved successfully", data=report_data)

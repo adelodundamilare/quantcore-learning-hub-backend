@@ -124,5 +124,13 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             query = query.filter(Course.created_at <= end_date)
         return query.count()
 
+    def get_all_courses_count(self, db: Session, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        query = self._query_active(db)
+        if start_date:
+            query = query.filter(Course.created_at >= start_date)
+        if end_date:
+            query = query.filter(Course.created_at <= end_date)
+        return query.count()
+
 
 course = CRUDCourse(Course)

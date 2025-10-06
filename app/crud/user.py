@@ -209,4 +209,18 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .first()
         return query._asdict() if query else None
 
+    def get_all_students_count(self, db: Session, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        student_role = db.query(Role).filter(Role.name == "student").first()
+        if not student_role:
+            return 0
+
+        query = db.query(User)\
+            .join(user_school_association, User.id == user_school_association.c.user_id)\
+            .filter(user_school_association.c.role_id == student_role.id)
+        if start_date:
+            query = query.filter(User.created_at >= start_date)
+        if end_date:
+            query = query.filter(User.created_at <= end_date)
+        return query.count()
+
 user = CRUDUser(User)

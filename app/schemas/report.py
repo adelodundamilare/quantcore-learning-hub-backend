@@ -12,6 +12,11 @@ class MostActiveUserSchema(BaseModel):
     full_name: str
     email: EmailStr
     lessons_completed: int
+
+class AdminDashboardReportSchema(BaseModel):
+    total_courses_count: int
+    total_schools_count: int
+    total_students_count: int
 class SchoolReportSchema(BaseModel):
     total_courses_count: int
     total_enrolled_students_count: int
