@@ -67,3 +67,12 @@ class EnrollmentStatusEnum(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     DROPPED = "dropped"
+
+class OrderTypeEnum(str, Enum):
+    BUY = "buy"
+    SELL = "sell"
+
+class OrderStatusEnum(str, Enum):
+    PENDING = "pending"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
