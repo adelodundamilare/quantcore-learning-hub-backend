@@ -13,16 +13,12 @@ from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash
 from app.services.email import EmailService
-from app.services.notification import notification_service
-from app.services.course import course_service
+from app.utils.permission import PermissionHelper as permission_helper
 
 class UserService:
 
     def get_students_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
-        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and (
-            not current_user_context.school or current_user_context.school.id != school_id
-        ):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view students for this school.")
+        permission_helper.require_school_view_permission(current_user_context, school_id)
 
         student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
         if not student_role:
@@ -31,16 +27,18 @@ class UserService:
         return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=student_role.id, skip=skip, limit=limit)
 
     def get_teachers_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
-        if current_user_context.role.name != RoleEnum.SUPER_ADMIN and (
-            not current_user_context.school or current_user_context.school.id != school_id
-        ):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view teachers for this school.")
+        permission_helper.require_school_view_permission(current_user_context, school_id)
 
         teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
         if not teacher_role:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Teacher role not found.")
 
         return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=teacher_role.id, skip=skip, limit=limit)
+
+    def get_teams_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+        permission_helper.require_school_view_permission(current_user_context, school_id)
+
+        return crud_user.get_non_student_users_by_school(db, school_id=school_id, skip=skip, limit=limit)
 
     def invite_user(
         self, db: Session, *, school: School, invite_in: UserInvite, current_user_context: UserContext

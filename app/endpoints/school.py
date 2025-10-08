@@ -64,6 +64,19 @@ def get_school_teachers(
     return APIResponse(message="Teachers for school retrieved successfully", data=[User.model_validate(u) for u in teachers])
 
 
+@router.get("/{school_id}/teams", response_model=APIResponse[List[User]])
+def get_school_teams(
+    school_id: int,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context),
+    skip: int = 0,
+    limit: int = 100
+):
+    """Retrieve all team members (non-students) for a specific school."""
+    teams = user_service.get_teams_for_school(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit)
+    return APIResponse(message="Teams for school retrieved successfully", data=[User.model_validate(u) for u in teams])
+
+
 @router.get("/admin/schools/report", response_model=APIResponse[PaginatedResponse[AdminSchoolDataSchema]])
 def get_admin_schools_report(
     *,
