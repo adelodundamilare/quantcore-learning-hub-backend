@@ -37,3 +37,9 @@ class LeaderboardResponseSchema(BaseModel):
     skip: int
     limit: int
 
+
+class SchoolDashboardStatsSchema(BaseModel):
+    total_students: int
+    total_courses: int
+    total_teams: int
+

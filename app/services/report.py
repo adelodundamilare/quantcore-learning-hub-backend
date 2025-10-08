@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.schemas.user import UserContext
-from app.schemas.report import AdminDashboardReportSchema, MostActiveUserSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema
+from app.schemas.report import AdminDashboardReportSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.course import course as crud_course
@@ -57,6 +57,26 @@ class ReportService:
             total=total_students_in_school,
             skip=skip,
             limit=limit
+        )
+
+    def get_school_dashboard_stats(self, db: Session, school_id: int, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> SchoolReportSchema:
+        permission_helper.require_school_view_permission(current_user_context, school_id)
+        permission_helper.require_not_student(current_user_context)
+
+        total_courses_count = crud_course.get_courses_by_school_count(db, school_id=school_id, start_date=start_date, end_date=end_date)
+
+        student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
+        if not student_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+
+        total_students_count = crud_user.get_users_by_school_and_role_count(db, school_id=school_id, role_id=student_role.id, start_date=start_date, end_date=end_date)
+
+        total_teams_count = crud_user.get_non_student_users_by_school_count(db, school_id=school_id, start_date=start_date, end_date=end_date)
+
+        return SchoolDashboardStatsSchema(
+            total_students=total_students_count,
+            total_courses=total_courses_count,
+            total_teams=total_teams_count
         )
 
     def get_admin_dashboard_report(self, db: Session, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> AdminDashboardReportSchema:

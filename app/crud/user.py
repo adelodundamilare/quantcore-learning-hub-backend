@@ -79,6 +79,25 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             query = query.filter(User.created_at <= end_date)
         return query.count()
 
+    def get_non_student_users_by_school_count(self, db: Session, *, school_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        student_role = db.query(Role).filter(Role.name == "student").first()
+        if not student_role:
+            return 0
+
+        query = db.query(User)\
+            .join(user_school_association, User.id == user_school_association.c.user_id)\
+            .filter(
+                user_school_association.c.school_id == school_id,
+                user_school_association.c.role_id != student_role.id
+            )
+
+        if start_date:
+            query = query.filter(User.created_at >= start_date)
+        if end_date:
+            query = query.filter(User.created_at <= end_date)
+
+        return query.count()
+
     def get_leaderboard_data_for_school(
         self, db: Session, school_id: int, skip: int = 0, limit: int = 100, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
     ) -> List[dict]:
