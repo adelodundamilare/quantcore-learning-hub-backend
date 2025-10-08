@@ -8,12 +8,14 @@ from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
-from app.schemas.user import  UserContext, UserInvite
+from app.schemas.user import  TeacherUpdate, UserContext, UserInvite
 from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash
 from app.services.email import EmailService
 from app.utils.permission import PermissionHelper as permission_helper
+from app.services.notification import notification_service
+from app.services.course import course_service
 
 class UserService:
 
@@ -71,7 +73,7 @@ class UserService:
 
         if existing_user:
             crud_user.add_user_to_school(
-                db, user=existing_user, school=school, role=role_to_assign
+                db, user=existing_user, school=school, role=role_to_assign, level=invite_in.level
             )
 
             if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT:
@@ -109,7 +111,7 @@ class UserService:
             try:
                 new_user = crud_user.create(db, obj_in=user_in, commit=False)
                 crud_user.add_user_to_school(
-                    db, user=new_user, school=school, role=role_to_assign
+                    db, user=new_user, school=school, role=role_to_assign, level=invite_in.level
                 )
             except Exception as e:
                 raise HTTPException(
@@ -194,5 +196,23 @@ class UserService:
             link=f"/schools/{new_school.id}" # Example link
         )
         return new_user
+
+    def update_teacher_details(self, db: Session, school_id: int, teacher_id: int, update_data: TeacherUpdate, current_user_context: UserContext):
+        permission_helper.require_school_management_permission(current_user_context, school_id)
+
+        teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
+        if not teacher_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Teacher role not found.")
+
+        association = crud_user.get_association_by_user_school_role(
+            db, user_id=teacher_id, school_id=school_id, role_id=teacher_role.id
+        )
+        if not association:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this school.")
+
+        crud_user.update_association(db, user_id=teacher_id, school_id=school_id, level=update_data.level)
+
+        updated_teacher = crud_user.get(db, id=teacher_id)
+        return updated_teacher
 
 user_service = UserService()

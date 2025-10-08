@@ -3,7 +3,7 @@ from typing import Optional, Any, List
 
 from .school import School
 from .role import Role
-from app.core.constants import RoleEnum
+from app.core.constants import RoleEnum, CourseLevelEnum
 
 class UserBase(BaseModel):
     """Base user schema with common fields."""
@@ -61,6 +61,7 @@ class UserInvite(BaseModel):
     full_name: str
     role_name: RoleEnum
     course_ids: Optional[List[int]] = None
+    level: Optional[CourseLevelEnum] = None
 
     model_config = ConfigDict(
         use_enum_values=True,
@@ -91,3 +92,7 @@ class AdminSchoolInvite(BaseModel):
     full_name: str
     school_name: str
     email: EmailStr
+
+
+class TeacherUpdate(BaseModel):
+    level: CourseLevelEnum

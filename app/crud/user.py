@@ -2,6 +2,7 @@ from typing import Any, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime
+from app.core.constants import CourseLevelEnum
 from app.crud.base import CRUDBase
 from app.models.course_enrollment import CourseEnrollment
 from app.models.user import User
@@ -69,8 +70,14 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         stmt = user_school_association.insert().values(
             user_id=user.id,
             school_id=school.id,
-            role_id=role.id
-        )
+            role_id=role.id)
+        db.execute(stmt)
+
+    def update_association(self, db: Session, *, user_id: int, school_id: int, level: CourseLevelEnum) -> None:
+        stmt = user_school_association.update().\
+            where(user_school_association.c.user_id == user_id).\
+            where(user_school_association.c.school_id == school_id).\
+            values(level=level)
         db.execute(stmt)
 
     def get_users_by_school_and_role_count(self, db: Session, *, school_id: int, role_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:

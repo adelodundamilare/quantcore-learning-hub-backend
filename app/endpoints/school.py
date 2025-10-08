@@ -1,10 +1,10 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.schemas.school import School, SchoolCreate, AdminSchoolDataSchema
-from app.core.constants import PermissionEnum
+from app.schemas.school import School, AdminSchoolDataSchema
+from app.services.school import school_service
 from app.schemas.response import APIResponse
-from app.schemas.user import AdminSchoolInvite, User, UserContext
+from app.schemas.user import AdminSchoolInvite, TeacherUpdate, User, UserContext
 from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
@@ -62,6 +62,19 @@ def get_school_teachers(
     """Retrieve all teachers for a specific school."""
     teachers = user_service.get_teachers_for_school(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit)
     return APIResponse(message="Teachers for school retrieved successfully", data=[User.model_validate(u) for u in teachers])
+
+
+@router.put("/{school_id}/teachers/{teacher_id}", response_model=APIResponse[User])
+def update_teacher_details(
+    school_id: int,
+    teacher_id: int,
+    update_data: TeacherUpdate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Update a teacher's level in a specific school."""
+    updated_teacher = user_service.update_teacher_details(db, school_id=school_id, teacher_id=teacher_id, update_data=update_data, current_user_context=context)
+    return APIResponse(message="Teacher details updated successfully", data=User.model_validate(updated_teacher))
 
 
 @router.get("/{school_id}/teams", response_model=APIResponse[List[User]])
