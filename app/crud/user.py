@@ -242,4 +242,18 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             query = query.filter(User.created_at <= end_date)
         return query.count()
 
+    def get_all_teachers_count(self, db: Session, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
+        teacher_role = db.query(Role).filter(Role.name == "teacher").first()
+        if not teacher_role:
+            return 0
+
+        query = db.query(User)\
+            .join(user_school_association, User.id == user_school_association.c.user_id)\
+            .filter(user_school_association.c.role_id == teacher_role.id)
+        if start_date:
+            query = query.filter(User.created_at >= start_date)
+        if end_date:
+            query = query.filter(User.created_at <= end_date)
+        return query.count()
+
 user = CRUDUser(User)

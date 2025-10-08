@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.schemas.user import UserContext
-from app.schemas.report import AdminDashboardReportSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema
+from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.course import course as crud_course
@@ -92,6 +92,20 @@ class ReportService:
             total_courses_count=total_courses_count,
             total_schools_count=total_schools_count,
             total_students_count=total_students_count
+        )
+
+    def get_admin_dashboard_stats(self, db: Session, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> AdminDashboardReportSchema:
+        if not permission_helper.is_super_admin(current_user_context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Super Admin can access this report.")
+
+        total_courses_count = crud_course.get_all_courses_count(db, start_date=start_date, end_date=end_date)
+        total_students_count = crud_user.get_all_students_count(db, start_date=start_date, end_date=end_date)
+        total_teachers_count = crud_user.get_all_teachers_count(db, start_date=start_date, end_date=end_date)
+
+        return AdminDashboardStatsSchema(
+            total_courses=total_courses_count,
+            total_students=total_students_count,
+            total_teachers=total_teachers_count
         )
 
 report_service = ReportService()

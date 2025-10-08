@@ -43,3 +43,9 @@ class SchoolDashboardStatsSchema(BaseModel):
     total_courses: int
     total_teams: int
 
+
+class AdminDashboardStatsSchema(BaseModel):
+    total_students: int
+    total_teachers: int
+    total_courses: int
+
