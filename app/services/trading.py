@@ -1,102 +1,321 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Dict
+from datetime import datetime, timedelta
+from decimal import Decimal
+from functools import wraps
+from collections import defaultdict
+import logging
 
-from app.schemas.user import UserContext
-from app.schemas.trading import WatchlistItemCreate, WatchlistItem, AccountBalanceSchema, PortfolioPositionSchema, TradeOrderCreate, TradeOrder
-from app.crud.trading import watchlist_item as crud_watchlist_item, account_balance as crud_account_balance, portfolio_position as crud_portfolio_position, trade_order as crud_trade_order
+from app.schemas.trading import (
+    WatchlistItemCreate,
+    WatchlistItem,
+    AccountBalanceSchema,
+    PortfolioPositionSchema,
+    TradeOrderCreate,
+    TradeOrder
+)
+from app.crud.trading import (
+    watchlist_item as crud_watchlist_item,
+    account_balance as crud_account_balance,
+    portfolio_position as crud_portfolio_position,
+    trade_order as crud_trade_order
+)
 from app.services.polygon import polygon_service
 from app.core.constants import OrderTypeEnum, OrderStatusEnum
 
+logger = logging.getLogger(__name__)
+
+order_limits: Dict[int, List[datetime]] = defaultdict(list)
+
+def rate_limit_orders(max_orders: int = 10, window_minutes: int = 1):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(self, db: Session, user_id: int, *args, **kwargs):
+            now = datetime.utcnow()
+
+            order_limits[user_id] = [
+                t for t in order_limits[user_id]
+                if now - t < timedelta(minutes=window_minutes)
+            ]
+
+            if len(order_limits[user_id]) >= max_orders:
+                logger.warning(f"Rate limit exceeded for user {user_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Too many orders. Maximum {max_orders} orders per {window_minutes} minute(s). Try again later."
+                )
+
+            order_limits[user_id].append(now)
+            return await func(self, db, user_id, *args, **kwargs)
+        return wrapper
+    return decorator
+
 class TradingService:
-    def add_stock_to_watchlist(self, db: Session, user_id: int, watchlist_item_in: WatchlistItemCreate) -> WatchlistItem:
-        existing_item = crud_watchlist_item.get_by_user_and_symbol(db, user_id=user_id, symbol=watchlist_item_in.symbol)
+    def add_stock_to_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_item_in: WatchlistItemCreate
+    ) -> WatchlistItem:
+        existing_item = crud_watchlist_item.get_by_user_and_symbol(
+            db,
+            user_id=user_id,
+            symbol=watchlist_item_in.symbol
+        )
+
         if existing_item:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stock already in watchlist.")
-        
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stock already in watchlist."
+            )
+
         new_item_data = watchlist_item_in.model_dump()
         new_item_data["user_id"] = user_id
+
         return crud_watchlist_item.create(db, obj_in=new_item_data)
 
-    def remove_stock_from_watchlist(self, db: Session, user_id: int, symbol: str) -> WatchlistItem:
-        existing_item = crud_watchlist_item.get_by_user_and_symbol(db, user_id=user_id, symbol=symbol)
+    def remove_stock_from_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        symbol: str
+    ) -> WatchlistItem:
+        existing_item = crud_watchlist_item.get_by_user_and_symbol(
+            db,
+            user_id=user_id,
+            symbol=symbol
+        )
+
         if not existing_item:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock not found in watchlist.")
-        
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stock not found in watchlist."
+            )
+
         crud_watchlist_item.remove(db, id=existing_item.id)
         return existing_item
 
-    def get_user_watchlist(self, db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[WatchlistItem]:
-        return crud_watchlist_item.get_multi_by_user(db, user_id=user_id, skip=skip, limit=limit)
+    def get_user_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[WatchlistItem]:
+        return crud_watchlist_item.get_multi_by_user(
+            db,
+            user_id=user_id,
+            skip=skip,
+            limit=limit
+        )
 
-    def get_account_balance(self, db: Session, user_id: int) -> AccountBalanceSchema:
+    def get_account_balance(
+        self,
+        db: Session,
+        user_id: int
+    ) -> AccountBalanceSchema:
         account = crud_account_balance.get_by_user_id(db, user_id=user_id)
+
         if not account:
-            account = crud_account_balance.create(db, obj_in={"user_id": user_id, "balance": 10000.00}) # Default starting balance
+            account = crud_account_balance.create(
+                db,
+                obj_in={
+                    "user_id": user_id,
+                    "balance": 10000.00,
+                    "initial_balance": 10000.00
+                }
+            )
+
         return AccountBalanceSchema.model_validate(account)
 
-    def get_portfolio(self, db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[PortfolioPositionSchema]:
-        portfolio = crud_portfolio_position.get_multi_by_user(db, user_id=user_id, skip=skip, limit=limit)
+    def get_portfolio(
+        self,
+        db: Session,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[PortfolioPositionSchema]:
+        portfolio = crud_portfolio_position.get_multi_by_user(
+            db,
+            user_id=user_id,
+            skip=skip,
+            limit=limit
+        )
+
         return [PortfolioPositionSchema.model_validate(p) for p in portfolio]
 
-    async def place_order(self, db: Session, user_id: int, order_in: TradeOrderCreate) -> TradeOrder:
-        account = crud_account_balance.get_by_user_id(db, user_id=user_id)
-        if not account:
-            account = crud_account_balance.create(db, obj_in={"user_id": user_id, "balance": 10000.00}) # Initialize if not exists
+    async def place_order(
+        self,
+        db: Session,
+        user_id: int,
+        order_in: TradeOrderCreate
+    ) -> TradeOrder:
+        try:
+            account = crud_account_balance.get_by_user_id(db, user_id=user_id)
 
-        quote = await polygon_service.get_latest_quote(order_in.symbol)
-        if not quote or not quote.get('p'):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Could not get current price for {order_in.symbol}")
-        
-        current_price = quote['p']
-        executed_price = current_price
+            if not account:
+                account = crud_account_balance.create(
+                    db,
+                    obj_in={
+                        "user_id": user_id,
+                        "balance": 10000.00,
+                        "initial_balance": 10000.00
+                    }
+                )
 
-        if order_in.order_type == OrderTypeEnum.BUY:
-            cost = order_in.quantity * executed_price
-            if account.balance < cost:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient funds.")
-            
-            account.balance -= cost
-            crud_account_balance.update(db, db_obj=account, obj_in={"balance": account.balance})
+            if order_in.quantity <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Quantity must be greater than 0"
+                )
 
-            position = crud_portfolio_position.get_by_user_and_symbol(db, user_id=user_id, symbol=order_in.symbol)
-            if position:
-                total_cost = (position.quantity * position.average_price) + cost
-                total_quantity = position.quantity + order_in.quantity
-                position.quantity = total_quantity
-                position.average_price = total_cost / total_quantity
-                crud_portfolio_position.update(db, db_obj=position, obj_in={"quantity": position.quantity, "average_price": position.average_price})
-            else:
-                crud_portfolio_position.create(db, obj_in={"user_id": user_id, "symbol": order_in.symbol, "quantity": order_in.quantity, "average_price": executed_price})
+            quote = await polygon_service.get_latest_quote(order_in.symbol)
 
-        elif order_in.order_type == OrderTypeEnum.SELL:
-            position = crud_portfolio_position.get_by_user_and_symbol(db, user_id=user_id, symbol=order_in.symbol)
-            if not position or position.quantity < order_in.quantity:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient shares to sell.")
-            
-            revenue = order_in.quantity * executed_price
-            account.balance += revenue
-            crud_account_balance.update(db, db_obj=account, obj_in={"balance": account.balance})
+            if not quote or not quote.get('p'):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Could not get current price for {order_in.symbol}"
+                )
 
-            position.quantity -= order_in.quantity
-            if position.quantity == 0:
-                crud_portfolio_position.remove(db, id=position.id)
-            else:
-                crud_portfolio_position.update(db, db_obj=position, obj_in={"quantity": position.quantity})
-        
-        trade_data = order_in.model_dump()
-        trade_data.update({
-            "user_id": user_id,
-            "status": OrderStatusEnum.FILLED,
-            "executed_price": executed_price,
-            "executed_at": datetime.utcnow()
-        })
-        new_trade = crud_trade_order.create(db, obj_in=trade_data)
-        return TradeOrder.model_validate(new_trade)
+            current_price = float(quote['p'])
 
-    def get_trade_history(self, db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[TradeOrder]:
-        history = crud_trade_order.get_multi_by_user(db, user_id=user_id, skip=skip, limit=limit)
+            if current_price <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid stock price"
+                )
+
+            executed_price = current_price
+            total_amount = round(order_in.quantity * executed_price, 2)
+
+            if order_in.order_type == OrderTypeEnum.BUY:
+                if account.balance < total_amount:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Insufficient funds. Required: ${total_amount:.2f}, Available: ${account.balance:.2f}"
+                    )
+
+                account.balance = round(account.balance - total_amount, 2)
+                crud_account_balance.update(
+                    db,
+                    db_obj=account,
+                    obj_in={"balance": account.balance}
+                )
+
+                position = crud_portfolio_position.get_by_user_and_symbol(
+                    db,
+                    user_id=user_id,
+                    symbol=order_in.symbol
+                )
+
+                if position:
+                    total_cost = (position.quantity * position.average_price) + total_amount
+                    total_quantity = position.quantity + order_in.quantity
+                    new_avg_price = round(total_cost / total_quantity, 2)
+
+                    crud_portfolio_position.update(
+                        db,
+                        db_obj=position,
+                        obj_in={
+                            "quantity": total_quantity,
+                            "average_price": new_avg_price
+                        }
+                    )
+                else:
+                    crud_portfolio_position.create(
+                        db,
+                        obj_in={
+                            "user_id": user_id,
+                            "symbol": order_in.symbol,
+                            "quantity": order_in.quantity,
+                            "average_price": executed_price
+                        }
+                    )
+
+            elif order_in.order_type == OrderTypeEnum.SELL:
+                position = crud_portfolio_position.get_by_user_and_symbol(
+                    db,
+                    user_id=user_id,
+                    symbol=order_in.symbol
+                )
+
+                if not position:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"You don't own any shares of {order_in.symbol}"
+                    )
+
+                if position.quantity < order_in.quantity:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Insufficient shares. You own {position.quantity}, trying to sell {order_in.quantity}"
+                    )
+
+                account.balance = round(account.balance + total_amount, 2)
+                crud_account_balance.update(
+                    db,
+                    db_obj=account,
+                    obj_in={"balance": account.balance}
+                )
+
+                new_quantity = position.quantity - order_in.quantity
+
+                if new_quantity == 0:
+                    crud_portfolio_position.remove(db, id=position.id)
+                else:
+                    crud_portfolio_position.update(
+                        db,
+                        db_obj=position,
+                        obj_in={"quantity": new_quantity}
+                    )
+
+            trade_data = order_in.model_dump()
+            trade_data.update({
+                "user_id": user_id,
+                "status": OrderStatusEnum.FILLED,
+                "executed_price": executed_price,
+                "total_amount": total_amount,
+                "executed_at": datetime.utcnow()
+            })
+
+            new_trade = crud_trade_order.create(db, obj_in=trade_data)
+
+            db.commit()
+
+            return TradeOrder.model_validate(new_trade)
+
+        except HTTPException:
+            db.rollback()
+            raise
+        except SQLAlchemyError as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database error: {str(e)}"
+            )
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error processing order: {str(e)}"
+            )
+
+    def get_trade_history(
+        self,
+        db: Session,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[TradeOrder]:
+        history = crud_trade_order.get_multi_by_user(
+            db,
+            user_id=user_id,
+            skip=skip,
+            limit=limit
+        )
+
         return [TradeOrder.model_validate(t) for t in history]
 
 trading_service = TradingService()

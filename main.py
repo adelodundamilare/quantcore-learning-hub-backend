@@ -2,16 +2,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report
+from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
+import socketio # type: ignore
+import asyncio
 
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=settings.ALLOWED_ORIGINS)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+app.mount("/socket.io", socketio.ASGIApp(sio))
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +43,13 @@ app.include_router(role.router, prefix="/roles", tags=["Roles"])
 app.include_router(permission.router, prefix="/permissions", tags=["Permissions"])
 app.include_router(notification.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(utility.router, prefix="/utility", tags=["utility"])
+
+# trading_router = trading.create_trading_router(sio)
+# app.include_router(trading_router, prefix="/trading", tags=["Trading"])
+
+# @app.on_event("startup")
+# async def startup_event():
+#     asyncio.create_task(trading.stream_prices_socketio(sio))
 
 if __name__ == "__main__":
     import uvicorn
