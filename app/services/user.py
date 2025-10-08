@@ -11,13 +11,33 @@ from app.crud.school import school as crud_school
 from app.schemas.user import  TeacherUpdate, UserContext, UserInvite
 from app.models.user import User
 from app.models.school import School
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.services.email import EmailService
 from app.utils.permission import PermissionHelper as permission_helper
 from app.services.notification import notification_service
 from app.services.course import course_service
 
 class UserService:
+
+    def change_password(self, db: Session, user: User, old_password: str, new_password: str):
+        if not verify_password(old_password, user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password.")
+
+        hashed_password = get_password_hash(new_password)
+        user.hashed_password = hashed_password
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Optionally, send a notification email
+        EmailService.send_email(
+            to_email=user.email,
+            subject="Your Password Has Been Changed",
+            template_name="reset-password-success.html",  # You might need to create this template
+            template_context={'user_name': user.full_name}
+        )
+
+        return user
 
     def get_students_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
         permission_helper.require_school_view_permission(current_user_context, school_id)
