@@ -92,19 +92,21 @@ def get_exam_questions(
     return APIResponse(message="Exam questions retrieved successfully", data=[Question.model_validate(q) for q in questions])
 
 
-@router.post("/{exam_id}/questions", response_model=APIResponse[Question], status_code=status.HTTP_201_CREATED)
-def create_question(
+@router.post("/{exam_id}/questions", response_model=APIResponse[List[Question]], status_code=status.HTTP_201_CREATED)
+
+def create_questions(
     *,
     db: Session = Depends(deps.get_transactional_db),
     exam_id: int,
-    question_in: QuestionCreate,
+    questions_in: List[QuestionCreate],
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    if question_in.exam_id != exam_id:
-        question_in.exam_id = exam_id
+    for question in questions_in:
+        if question.exam_id != exam_id:
+            question.exam_id = exam_id
 
-    new_question = exam_service.create_question(db, question_in=question_in, current_user_context=context)
-    return APIResponse(message="Question created successfully", data=Question.model_validate(new_question))
+    new_questions = exam_service.create_questions(db, questions_in=questions_in, current_user_context=context)
+    return APIResponse(message="Questions created successfully", data=[Question.model_validate(q) for q in new_questions])
 
 
 @router.get("/questions/{question_id}", response_model=APIResponse[Question])

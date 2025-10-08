@@ -178,6 +178,21 @@ class ExamService:
         db.flush()
         return new_question
 
+    def create_questions(self, db: Session, questions_in: List[QuestionCreate], current_user_context: UserContext) -> List[Question]:
+        if not questions_in:
+            return []
+
+        exam_id = questions_in[0].exam_id
+        exam = crud_exam.get(db, id=exam_id)
+        if not exam:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
+
+        self._require_exam_management_permission(db, current_user_context, exam=exam)
+
+        new_questions = crud_question.create_multi(db, objs_in=questions_in)
+        db.flush()
+        return new_questions
+
     def get_question(self, db: Session, question_id: int, current_user_context: UserContext,
                     include_correct_answer: bool = False) -> Question:
         question = crud_question.get(db, id=question_id)

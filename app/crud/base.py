@@ -47,11 +47,21 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         obj_in_data = jsonable_encoder(obj_in)
         db_obj = self.model(**obj_in_data)
         db.add(db_obj)
-        db.flush() # Populate ID
-        db.refresh(db_obj) # Refresh to get ID and other defaults
+        db.flush()
+        db.refresh(db_obj)
         if commit:
             db.commit()
         return db_obj
+
+    def create_multi(self, db: Session, *, objs_in: List[CreateSchemaType], commit: bool = True) -> List[ModelType]:
+        db_objs = [self.model(**jsonable_encoder(obj_in)) for obj_in in objs_in]
+        db.add_all(db_objs)
+        db.flush()
+        for db_obj in db_objs:
+            db.refresh(db_obj)
+        if commit:
+            db.commit()
+        return db_objs
 
     def update(
         self,
