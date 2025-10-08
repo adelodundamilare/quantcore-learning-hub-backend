@@ -18,7 +18,7 @@ class AdminSchoolDataSchema(BaseModel):
     school_id: int
     school_name: str
     creator_name: str
-    creator_email: EmailStr
+    creator_email: str
     total_teachers: int
     total_students: int
     is_active: bool

@@ -59,7 +59,6 @@ class CRUDSchool(CRUDBase[School, SchoolCreate, SchoolUpdate]):
             .join(User, user_school_association.c.user_id == User.id)
             .join(Role, user_school_association.c.role_id == Role.id)
             .filter(Role.name == RoleEnum.SCHOOL_ADMIN)
-            .group_by(user_school_association.c.school_id, User.full_name, User.email)
             .order_by(user_school_association.c.school_id, User.id) # Order to pick the "first" admin
             .distinct(user_school_association.c.school_id)
             .subquery()
