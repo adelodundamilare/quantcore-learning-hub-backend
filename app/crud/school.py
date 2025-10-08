@@ -2,6 +2,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from datetime import datetime
 from sqlalchemy import func
+import sqlalchemy as sa
 from app.crud.base import CRUDBase
 from app.models.school import School
 from app.schemas.school import SchoolCreate, SchoolUpdate
@@ -73,7 +74,7 @@ class CRUDSchool(CRUDBase[School, SchoolCreate, SchoolUpdate]):
                 func.coalesce(creator_sq.c.creator_email, "N/A").label("creator_email"),
                 func.coalesce(teachers_count_sq.c.total_teachers, 0).label("total_teachers"),
                 func.coalesce(students_count_sq.c.total_students, 0).label("total_students"),
-                School.is_active.label("is_active")
+                sa.case((School.deleted_at == None, True), else_=False).label("is_active")
             )
             .outerjoin(teachers_count_sq, School.id == teachers_count_sq.c.school_id)
             .outerjoin(students_count_sq, School.id == students_count_sq.c.school_id)
