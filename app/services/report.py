@@ -25,7 +25,7 @@ class ReportService:
         total_enrolled_students_count = crud_user.get_users_by_school_and_role_count(db, school_id=school_id, role_id=student_role.id, start_date=start_date, end_date=end_date)
 
         top_performer_data = crud_user.get_top_performer_by_exam_score(db, school_id=school_id, start_date=start_date, end_date=end_date)
-        top_performer = TopPerformerSchema(**top_performer_data._asdict()) if top_performer_data else None
+        top_performer = TopPerformerSchema(**top_performer_data) if top_performer_data else None
 
         most_active_user_data = crud_user.get_most_active_user_by_lessons_completed(db, school_id=school_id, start_date=start_date, end_date=end_date)
         most_active_user = MostActiveUserSchema(**most_active_user_data._asdict()) if most_active_user_data else None
