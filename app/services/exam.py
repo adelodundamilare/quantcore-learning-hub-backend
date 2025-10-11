@@ -247,7 +247,7 @@ class ExamService:
 
         self._require_exam_view_permission(db, current_user_context, exam)
 
-        questions = crud_question.get_questions_by_exam(db, exam_id=exam_id)
+        questions = crud_question.get_by_exam(db, exam_id=exam_id)
 
         if not include_correct_answers and permission_helper.is_student(current_user_context):
             for question in questions:

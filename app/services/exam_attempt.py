@@ -103,7 +103,7 @@ class ExamAttemptService:
         total_score = 0.0
         total_possible_points = 0
 
-        questions = crud_question.get_questions_by_exam(db, exam_id=exam.id)
+        questions = crud_question.get_by_exam(db, exam_id=exam.id)
         user_answers = crud_user_answer.get_all_by_attempt(db, exam_attempt_id=attempt.id)
         user_answers_map = {ans.question_id: ans for ans in user_answers}
 
