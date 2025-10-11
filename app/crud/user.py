@@ -66,11 +66,13 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .all()
         )
 
-    def add_user_to_school(self, db: Session, *, user: User, school: School, role: Role) -> None:
+    def add_user_to_school(self, db: Session, *, user: User, school: School, role: Role, level: Optional[CourseLevelEnum] = None) -> None:
         stmt = user_school_association.insert().values(
             user_id=user.id,
             school_id=school.id,
-            role_id=role.id)
+            role_id=role.id,
+            level=level
+        )
         db.execute(stmt)
 
     def update_association(self, db: Session, *, user_id: int, school_id: int, level: CourseLevelEnum) -> None:
