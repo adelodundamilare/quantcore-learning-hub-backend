@@ -10,7 +10,11 @@ cloudinary.config(
 
 class CloudinaryService:
 
-    def upload_file(self, file: bytes):
-        result = cloudinary.uploader.upload(file)
+    def upload_image(self, file: bytes):
+        result = cloudinary.uploader.upload(file, resource_type="image")
+        return result["secure_url"]
+
+    def upload_video(self, file: bytes):
+        result = cloudinary.uploader.upload(file, resource_type="video")
         return result["secure_url"]
 
