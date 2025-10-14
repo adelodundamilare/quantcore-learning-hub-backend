@@ -180,6 +180,23 @@ def submit_answer(
     return APIResponse(message="Answer submitted successfully", data=UserAnswer.model_validate(user_answer))
 
 
+@router.post("/attempts/{attempt_id}/answers/bulk", response_model=APIResponse[List[UserAnswer]])
+def submit_bulk_answers(
+    *,
+    db: Session = Depends(deps.get_transactional_db),
+    attempt_id: int,
+    answers_in: List[UserAnswerCreate],
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    user_answers = exam_attempt_service.submit_bulk_answers(
+        db,
+        attempt_id=attempt_id,
+        answers_in=answers_in,
+        current_user_context=context
+    )
+    return APIResponse(message="Answers submitted successfully", data=[UserAnswer.model_validate(ua) for ua in user_answers])
+
+
 @router.post("/attempts/{attempt_id}/submit", response_model=APIResponse[ExamAttempt])
 def submit_exam(
     *,

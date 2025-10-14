@@ -190,6 +190,50 @@ class ExamAttemptService:
 
         return updated_answer
 
+    def submit_bulk_answers(self, db: Session, attempt_id: int, answers_in: List[UserAnswerCreate], current_user_context: UserContext) -> List[UserAnswer]:
+        if not answers_in:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No answers provided.")
+
+        question_ids = [ans.question_id for ans in answers_in]
+        if len(question_ids) != len(set(question_ids)):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate question_ids found in submission.")
+
+        attempt = crud_exam_attempt.get(db, id=attempt_id)
+        if not attempt:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
+
+        self._require_attempt_ownership_and_in_progress(current_user_context, attempt)
+
+        exam_questions = {q.id for q in crud_question.get_by_exam(db, exam_id=attempt.exam_id)}
+        invalid_questions = [ans.question_id for ans in answers_in if ans.question_id not in exam_questions]
+
+        if invalid_questions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid question_id(s): {invalid_questions}. All questions must belong to the exam."
+            )
+
+        existing_answers = {ans.question_id: ans for ans in crud_user_answer.get_all_by_attempt(db, exam_attempt_id=attempt_id)}
+        processed_answers = []
+
+        for answer_in in answers_in:
+            if answer_in.question_id in existing_answers:
+                existing_answer = existing_answers[answer_in.question_id]
+                update_data = UserAnswerUpdate(answer_text=answer_in.answer_text)
+                updated_answer = crud_user_answer.update(db, db_obj=existing_answer, obj_in=update_data)
+                processed_answers.append(updated_answer)
+            else:
+                create_data = UserAnswerCreate(
+                    user_id=current_user_context.user.id,
+                    exam_attempt_id=attempt_id,
+                    question_id=answer_in.question_id,
+                    answer_text=answer_in.answer_text
+                )
+                new_answer = crud_user_answer.create(db, obj_in=create_data)
+                processed_answers.append(new_answer)
+
+        return processed_answers
+
     def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttempt:
         attempt = crud_exam_attempt.get(db, id=attempt_id)
         if not attempt:
