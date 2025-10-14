@@ -101,5 +101,21 @@ class CRUDExamAttempt(CRUDBase[ExamAttempt, ExamAttemptCreate, ExamAttemptUpdate
         )
         return {row[0] for row in result}
 
+    def get_user_highest_scores(self, db: Session, user_id: int) -> dict[int, float]:
+        result = (
+            db.query(
+                ExamAttempt.exam_id,
+                func.max(ExamAttempt.score)
+            )
+            .filter(
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.status != ExamAttemptStatusEnum.IN_PROGRESS,
+                ExamAttempt.score.isnot(None)
+            )
+            .group_by(ExamAttempt.exam_id)
+            .all()
+        )
+        return {row[0]: row[1] for row in result}
+
 
 exam_attempt = CRUDExamAttempt(ExamAttempt)

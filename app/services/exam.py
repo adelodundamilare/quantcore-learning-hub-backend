@@ -172,10 +172,12 @@ class ExamService:
             user_id = current_user_context.user.id
             completed_exam_ids = crud_exam_attempt.get_user_completed_exam_ids(db, user_id=user_id)
             in_progress_exam_ids = crud_exam_attempt.get_user_in_progress_exam_ids(db, user_id=user_id)
+            highest_scores = crud_exam_attempt.get_user_highest_scores(db, user_id=user_id)
             
             for exam in exams:
                 if exam.id in completed_exam_ids:
                     exam.status = StudentExamStatusEnum.COMPLETED
+                    exam.grade = highest_scores.get(exam.id)
                 elif exam.id in in_progress_exam_ids:
                     exam.status = StudentExamStatusEnum.IN_PROGRESS
                 else:

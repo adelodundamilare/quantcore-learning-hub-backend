@@ -53,6 +53,7 @@ class Exam(ExamBase):
     updated_at: Optional[datetime] = None
     level: Optional[CourseLevelEnum] = None
     status: Optional[StudentExamStatusEnum] = None
+    grade: Optional[float] = 0
     questions: List[Question] = []
     attempts: List[ExamAttempt] = []
 
