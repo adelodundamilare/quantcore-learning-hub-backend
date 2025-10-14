@@ -100,3 +100,16 @@ def get_admin_schools_report(
 ):
     report_data = school_service.get_admin_schools_report(db, current_user_context=context, skip=skip, limit=limit)
     return APIResponse(message="Admin schools report retrieved successfully", data=report_data)
+
+
+@router.get("/{school_id}/users/{user_id}", response_model=APIResponse[User])
+def get_school_user_profile(
+    school_id: int,
+    user_id: int,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    user_profile = user_service.get_user_profile_for_school(
+        db, school_id=school_id, user_id=user_id, current_user_context=context
+    )
+    return APIResponse(message="User profile retrieved successfully", data=User.model_validate(user_profile))

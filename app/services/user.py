@@ -235,4 +235,17 @@ class UserService:
         updated_teacher = crud_user.get(db, id=teacher_id)
         return updated_teacher
 
+    def get_user_profile_for_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> User:
+        # permission_helper.require_not_student(current_user_context)
+        permission_helper.require_school_view_permission(current_user_context, school_id)
+
+        user = crud_user.get(db, id=user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+        if not any(school.id == school_id for school in user.schools):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in this school.")
+
+        return user
+
 user_service = UserService()
