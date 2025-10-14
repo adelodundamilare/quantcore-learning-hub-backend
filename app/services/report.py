@@ -9,10 +9,37 @@ from app.crud.user import user as crud_user
 from app.crud.course import course as crud_course
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
+from app.crud.exam import exam as crud_exam
+from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
+from app.services.exam import exam_service
+from app.core.constants import ExamAttemptStatusEnum
+from app.schemas.report import StudentExamStats
 from app.utils.permission import PermissionHelper as permission_helper
 from fastapi import HTTPException, status
 
 class ReportService:
+    def get_student_exam_stats(self, db: Session, current_user_context: UserContext) -> StudentExamStats:
+        if not permission_helper.is_student(current_user_context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This report is only for students.")
+
+        user_id = current_user_context.user.id
+        course_ids, curriculum_ids = exam_service._get_user_course_and_curriculum_ids(db, current_user_context)
+
+        if not course_ids and not curriculum_ids:
+            return StudentExamStats(pending_exams=0, overall_grade_percentage=0.0)
+
+        all_student_exams = crud_exam.get_multi_filtered(
+            db, course_ids=course_ids, curriculum_ids=curriculum_ids
+        )
+
+        completed_exam_ids = crud_exam_attempt.get_user_completed_exam_ids(db, user_id=user_id)
+        pending_exams_count = len([exam for exam in all_student_exams if exam.id not in completed_exam_ids])
+        overall_grade_percentage = crud_exam_attempt.get_user_average_score(db, user_id=user_id)
+
+        return StudentExamStats(
+            pending_exams=pending_exams_count,
+            overall_grade_percentage=overall_grade_percentage
+        )
     def get_school_report(self, db: Session, school_id: int, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> SchoolReportSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 

@@ -12,6 +12,8 @@ from app.schemas.user_answer import UserAnswer, UserAnswerCreate
 from app.services.exam import exam_service
 from app.services.exam_attempt import exam_attempt_service
 from app.schemas.user import UserContext
+from app.schemas.report import StudentExamStats
+from app.services.report import report_service
 from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
@@ -220,3 +222,12 @@ def get_exam_attempts(
 ):
     attempts = exam_attempt_service.get_exam_attempts_by_exam(db, exam_id=exam_id, current_user_context=context)
     return APIResponse(message="Exam attempts retrieved successfully", data=[ExamAttempt.model_validate(a) for a in attempts])
+
+@router.get("/student/my/stats", response_model=APIResponse[StudentExamStats], status_code=status.HTTP_200_OK)
+def get_student_exam_statistics(
+    *,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    stats = report_service.get_student_exam_stats(db, current_user_context=context)
+    return APIResponse(message="Student exam stats retrieved successfully", data=stats)

@@ -7,6 +7,11 @@ class TopPerformerSchema(BaseModel):
     email: EmailStr
     accumulated_exam_score: float
 
+class StudentExamStats(BaseModel):
+    pending_exams: int
+    overall_grade_percentage: float
+
+
 class MostActiveUserSchema(BaseModel):
     user_id: int
     full_name: str

@@ -1,11 +1,14 @@
 from sqlalchemy.orm import Session, selectinload
 from typing import List
+from sqlalchemy import func
 
+from app.core.constants import ExamAttemptStatusEnum
 from app.crud.base import CRUDBase
 from app.models.exam_attempt import ExamAttempt
 from app.schemas.exam_attempt import ExamAttemptCreate, ExamAttemptUpdate
 
 class CRUDExamAttempt(CRUDBase[ExamAttempt, ExamAttemptCreate, ExamAttemptUpdate]):
+
     def _query_with_relationships(self, db: Session):
         return db.query(ExamAttempt).options(
             selectinload(ExamAttempt.exam),
@@ -61,6 +64,30 @@ class CRUDExamAttempt(CRUDBase[ExamAttempt, ExamAttemptCreate, ExamAttemptUpdate
             .order_by(ExamAttempt.start_time.desc())
             .all()
         )
+
+    def get_user_average_score(self, db: Session, user_id: int) -> float:
+        result = (
+            db.query(func.avg(ExamAttempt.score))
+            .filter(
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.status != ExamAttemptStatusEnum.IN_PROGRESS,
+                ExamAttempt.score.isnot(None)
+            )
+            .scalar()
+        )
+        return round(result, 2) if result else 0.0
+
+    def get_user_completed_exam_ids(self, db: Session, user_id: int) -> set:
+        result = (
+            db.query(ExamAttempt.exam_id)
+            .filter(
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.status != ExamAttemptStatusEnum.IN_PROGRESS
+            )
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in result}
 
 
 exam_attempt = CRUDExamAttempt(ExamAttempt)
