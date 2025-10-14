@@ -4,11 +4,42 @@ from app.crud.permission import permission as crud_permission
 from app.models.role import Role
 from fastapi import HTTPException, status
 
-class RoleService:
-    """Service layer for role-related business logic."""
+from sqlalchemy.orm import Session
+from app.crud.role import role as crud_role
+from app.crud.permission import permission as crud_permission
+from app.models.role import Role
+from fastapi import HTTPException, status
+from typing import List
 
-    def assign_permission_to_role(self, db: Session, *, role_id: int, permission_id: int) -> Role:
-        """Associates a permission with a role."""
+from app.schemas.user import UserContext
+from app.utils.permission import PermissionHelper as permission_helper
+from app.core.constants import RoleEnum
+
+class RoleService:
+    def update_role_permissions(self, db: Session, *, role_id: int, permission_ids: List[int], current_user_context: UserContext) -> Role:
+        if not permission_helper.is_super_admin(current_user_context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Super Admins can manage role permissions.")
+
+        role = crud_role.get(db, id=role_id)
+        if not role:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+        if role.name == RoleEnum.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify permissions for the Super Admin role.")
+
+        # Remove duplicates and fetch permissions from DB
+        unique_permission_ids = list(set(permission_ids))
+        permissions = crud_permission.get_multi_by_ids(db, ids=unique_permission_ids)
+
+        if len(permissions) != len(unique_permission_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more permission IDs are invalid.")
+
+        return crud_role.update_permissions(db, role=role, permissions=permissions)
+
+    def assign_permission_to_role(self, db: Session, *, role_id: int, permission_id: int, current_user_context: UserContext) -> Role:
+        if not permission_helper.is_super_admin(current_user_context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Super Admins can manage role permissions.")
+
         role = crud_role.get(db, id=role_id)
         if not role:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
@@ -20,10 +51,6 @@ class RoleService:
         if permission in role.permissions:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Permission already assigned to this role")
 
-        role.permissions.append(permission)
-        db.add(role)
-        db.commit()
-        db.refresh(role)
-        return role
+        return crud_role.add_permission(db, role=role, permission=permission)
 
 role_service = RoleService()

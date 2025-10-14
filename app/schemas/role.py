@@ -20,3 +20,6 @@ class Role(RoleBase):
     id: int
     permissions: list[Permission] = []
     model_config = ConfigDict(from_attributes=True)
+
+class RolePermissionUpdate(BaseModel):
+    permission_ids: list[int]
