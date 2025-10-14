@@ -89,5 +89,17 @@ class CRUDExamAttempt(CRUDBase[ExamAttempt, ExamAttemptCreate, ExamAttemptUpdate
         )
         return {row[0] for row in result}
 
+    def get_user_in_progress_exam_ids(self, db: Session, user_id: int) -> set:
+        result = (
+            db.query(ExamAttempt.exam_id)
+            .filter(
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.status == ExamAttemptStatusEnum.IN_PROGRESS
+            )
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in result}
+
 
 exam_attempt = CRUDExamAttempt(ExamAttempt)

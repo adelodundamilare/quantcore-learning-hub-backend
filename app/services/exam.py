@@ -6,11 +6,12 @@ from app.crud.exam import exam as crud_exam
 from app.crud.question import question as crud_question
 from app.crud.course import course as crud_course
 from app.crud.curriculum import curriculum as crud_curriculum
+from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.schemas.exam import ExamCreate, ExamUpdate, Exam
 from app.schemas.question import QuestionCreate, QuestionUpdate, Question
 from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
-from app.core.constants import CourseLevelEnum
+from app.core.constants import CourseLevelEnum, StudentExamStatusEnum
 
 
 class ExamService:
@@ -157,7 +158,7 @@ class ExamService:
             if not course_ids and not curriculum_ids:
                 return []
 
-        return crud_exam.get_multi_filtered(
+        exams = crud_exam.get_multi_filtered(
             db,
             skip=skip,
             limit=limit,
@@ -166,6 +167,21 @@ class ExamService:
             curriculum_ids=curriculum_ids,
             is_super_admin=is_super_admin
         )
+
+        if permission_helper.is_student(current_user_context):
+            user_id = current_user_context.user.id
+            completed_exam_ids = crud_exam_attempt.get_user_completed_exam_ids(db, user_id=user_id)
+            in_progress_exam_ids = crud_exam_attempt.get_user_in_progress_exam_ids(db, user_id=user_id)
+            
+            for exam in exams:
+                if exam.id in completed_exam_ids:
+                    exam.status = StudentExamStatusEnum.COMPLETED
+                elif exam.id in in_progress_exam_ids:
+                    exam.status = StudentExamStatusEnum.IN_PROGRESS
+                else:
+                    exam.status = StudentExamStatusEnum.LOCKED
+        
+        return exams
 
     def create_question(self, db: Session, question_in: QuestionCreate, current_user_context: UserContext) -> Question:
         exam = crud_exam.get(db, id=question_in.exam_id)
