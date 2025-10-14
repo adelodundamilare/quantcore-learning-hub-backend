@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading
+from app.realtime import websockets as websocket_events
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
 import socketio # type: ignore
@@ -44,12 +45,13 @@ app.include_router(permission.router, prefix="/permissions", tags=["Permissions"
 app.include_router(notification.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(utility.router, prefix="/utility", tags=["utility"])
 
-# trading_router = trading.create_trading_router(sio)
-# app.include_router(trading_router, prefix="/trading", tags=["Trading"])
+trading_router = trading.create_trading_router()
+app.include_router(trading_router, prefix="/trading", tags=["Trading"])
 
-# @app.on_event("startup")
-# async def startup_event():
-#     asyncio.create_task(trading.stream_prices_socketio(sio))
+@app.on_event("startup")
+async def startup_event():
+    websocket_events.register_websocket_events(sio)
+    asyncio.create_task(websocket_events.stream_prices_socketio(sio))
 
 if __name__ == "__main__":
     import uvicorn
