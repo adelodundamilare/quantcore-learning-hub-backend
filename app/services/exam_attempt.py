@@ -119,7 +119,7 @@ class ExamAttemptService:
                 score = question.points if is_correct else 0.0
                 total_score += score
 
-                update_data = UserAnswerUpdate(is_correct=is_correct, score=score)
+                update_data = UserAnswerUpdate(is_correct=is_correct, correct_answer=question.correct_answer, score=score)
                 crud_user_answer.update(db, db_obj=user_answer, obj_in=update_data)
 
         final_score_percentage = (total_score / total_possible_points * 100) if total_possible_points > 0 else 0.0
