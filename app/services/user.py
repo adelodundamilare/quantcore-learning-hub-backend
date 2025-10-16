@@ -235,6 +235,13 @@ class UserService:
         updated_teacher = crud_user.get(db, id=teacher_id)
         return updated_teacher
 
+    def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+        if not permission_helper.is_super_admin(current_user_context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this resource.")
+
+        role_names = [role.value for role in roles]
+        return crud_user.get_users_by_role_names(db, role_names=role_names, skip=skip, limit=limit)
+
     def get_user_profile_for_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> User:
         # permission_helper.require_not_student(current_user_context)
         permission_helper.require_school_view_permission(current_user_context, school_id)

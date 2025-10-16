@@ -10,7 +10,8 @@ from app.utils.logger import setup_logger
 from app.models.user import User
 from app.services.email import EmailService
 
-from app.schemas.user import User, UserUpdate, UserInvite
+from app.schemas.user import User, UserUpdate, UserInvite, User
+from typing import List
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
 from app.services.auth import auth_service
@@ -116,3 +117,17 @@ async def delete_account(
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise
+
+@router.get("/users/admins", response_model=APIResponse[List[User]])
+def get_admin_users(
+    db: Session = Depends(deps.get_db),
+    context: deps.UserContext = Depends(deps.get_current_user_with_context),
+    skip: int = 0,
+    limit: int = 100
+):
+    """Retrieve all users with admin and member roles."""
+    users = user_service.get_users_by_roles(
+        db, roles=[RoleEnum.MEMBER, RoleEnum.ADMIN],
+        current_user_context=context, skip=skip, limit=limit
+    )
+    return APIResponse(message="Admin users retrieved successfully", data=[User.model_validate(u) for u in users])

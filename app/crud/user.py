@@ -49,6 +49,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .all()
         )
 
+    def get_users_by_role_names(self, db: Session, *, role_names: List[str], skip: int = 0, limit: int = 100) -> List[User]:
+        return (
+            db.query(User)
+            .join(user_school_association, User.id == user_school_association.c.user_id)
+            .join(Role, user_school_association.c.role_id == Role.id)
+            .filter(Role.name.in_(role_names))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
     def get_non_student_users_by_school(self, db: Session, *, school_id: int, skip: int = 0, limit: int = 100) -> List[User]:
         student_role = db.query(Role).filter(Role.name == "student").first()
         if not student_role:
