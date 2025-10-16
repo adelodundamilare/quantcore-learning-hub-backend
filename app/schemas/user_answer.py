@@ -6,6 +6,7 @@ class UserAnswerBase(BaseModel):
     exam_attempt_id: int
     question_id: int
     answer_text: Optional[int] = None # Stores the index of the user's chosen option
+    user_id: Optional[int] = None
 
     is_correct: Optional[bool] = None
     score: Optional[float] = None
