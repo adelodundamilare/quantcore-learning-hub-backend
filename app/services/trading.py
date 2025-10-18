@@ -682,19 +682,28 @@ class TradingService:
         self,
         db: Session,
         user_id: int,
-        from_date: datetime,
-        to_date: datetime
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None
     ) -> List[PortfolioHistoricalDataPointSchema]:
-        if from_date > to_date:
+        all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
+
+        if not all_trades:
+            return []
+
+        earliest_trade_date = min(trade.executed_at.date() for trade in all_trades)
+        latest_trade_date = max(trade.executed_at.date() for trade in all_trades)
+
+        start_date = from_date.date() if from_date else earliest_trade_date
+        end_date = to_date.date() if to_date else datetime.utcnow().date()
+
+        if start_date > end_date:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="from_date must be before to_date"
             )
 
-        all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
-
         current_holdings = defaultdict(Decimal)
-        initial_trades = [t for t in all_trades if t.executed_at.date() < from_date]
+        initial_trades = [t for t in all_trades if t.executed_at.date() < start_date]
 
         for trade in initial_trades:
             qty = Decimal(str(trade.quantity))
@@ -707,16 +716,16 @@ class TradingService:
 
         relevant_trades = [
             t for t in all_trades
-            if from_date <= t.executed_at.date() <= to_date
+            if start_date <= t.executed_at.date() <= end_date
         ]
         relevant_trades.sort(key=lambda x: x.executed_at)
 
         historical_data = []
-        current_date = from_date
+        current_date = start_date
 
-        while current_date <= to_date:
+        while current_date <= end_date:
             for trade in relevant_trades:
-                if trade.executed_at.date() == current_date.date():
+                if trade.executed_at.date() == current_date:
                     qty = Decimal(str(trade.quantity))
                     if trade.order_type == OrderTypeEnum.BUY:
                         current_holdings[trade.symbol] += qty

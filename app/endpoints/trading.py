@@ -373,21 +373,33 @@ def create_trading_router():
 
     @router.get("/portfolio/history", response_model=APIResponse[PortfolioHistoricalDataSchema])
     async def get_portfolio_history(
-        from_date: str,
-        to_date: str,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context)
     ):
-        try:
-            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid date format. Use YYYY-MM-DD"
-            )
+        from_dt: Optional[datetime] = None
+        to_dt: Optional[datetime] = None
 
-        if from_dt > to_dt:
+        if from_date:
+            try:
+                from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid from_date format. Use YYYY-MM-DD"
+                )
+
+        if to_date:
+            try:
+                to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid to_date format. Use YYYY-MM-DD"
+                )
+
+        if from_dt and to_dt and from_dt > to_dt:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="from_date must be before to_date"
