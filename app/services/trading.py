@@ -16,7 +16,11 @@ from app.schemas.trading import (
     AccountBalanceSchema,
     PortfolioPositionSchema,
     TradeOrderCreate,
-    TradeOrder
+    TradeOrder,
+    PortfolioHistoricalDataPointSchema,
+    PortfolioHistoricalDataSchema,
+    OrderPreviewRequest,
+    OrderPreview
 )
 from app.crud.trading import (
     watchlist_item as crud_watchlist_item,
@@ -386,6 +390,39 @@ class TradingService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error processing order: {str(e)}"
             )
+    async def preview_order(
+        self,
+        db: Session,
+        user_id: int,
+        order_preview: OrderPreviewRequest
+    ) -> OrderPreview:
+        """
+        Calculate estimated cost/credit without executing the order
+        """
+        quote = await polygon_service.get_latest_quote(order_preview.symbol)
+
+        if not quote or not quote.get('p'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not get current price for {order_preview.symbol}"
+            )
+
+        current_price = float(quote['p'])
+
+        # If selling in dollars, calculate quantity needed
+        if order_preview.sell_in_dollars and order_preview.order_type == OrderTypeEnum.SELL:
+            quantity = order_preview.amount / current_price
+        else:
+            quantity = order_preview.quantity
+
+        estimated_total = round(quantity * current_price, 2)
+
+        return {
+            "market_price": current_price,
+            "quantity": quantity,
+            "estimated_total": estimated_total,
+            "order_type": order_preview.order_type
+        }
 
     def get_trade_history(
         self,
@@ -402,5 +439,97 @@ class TradingService:
         )
 
         return [TradeOrder.model_validate(t) for t in history]
+
+    async def get_portfolio_historical_data(
+        self,
+        db: Session,
+        user_id: int,
+        from_date: datetime,
+        to_date: datetime
+    ) -> List[PortfolioHistoricalDataPointSchema]:
+        if from_date > to_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="from_date must be before to_date"
+            )
+
+        # Get all trade orders for the user
+        all_trade_orders = crud_trade_order.get_multi_by_user(db, user_id=user_id)
+
+        # Filter orders within the historical range
+        relevant_orders = [
+            order for order in all_trade_orders
+            if from_date <= order.executed_at.date() <= to_date
+        ]
+        relevant_orders.sort(key=lambda x: x.executed_at)
+
+        # Initialize portfolio holdings at the start of the period
+        current_holdings = defaultdict(float) # symbol -> quantity
+
+        # Get initial portfolio state before from_date
+        initial_orders = [
+            order for order in all_trade_orders
+            if order.executed_at.date() < from_date
+        ]
+        for order in initial_orders:
+            if order.order_type == OrderTypeEnum.BUY:
+                current_holdings[order.symbol] += order.quantity
+            elif order.order_type == OrderTypeEnum.SELL:
+                current_holdings[order.symbol] -= order.quantity
+
+        # Remove any symbols with zero or negative quantity
+        current_holdings = {s: q for s, q in current_holdings.items() if q > 0}
+
+        historical_data_points = []
+        current_date = from_date
+
+        while current_date <= to_date:
+            # Apply trades that happened on current_date
+            for order in relevant_orders:
+                if order.executed_at.date() == current_date.date():
+                    if order.order_type == OrderTypeEnum.BUY:
+                        current_holdings[order.symbol] += order.quantity
+                    elif order.order_type == OrderTypeEnum.SELL:
+                        current_holdings[order.symbol] -= order.quantity
+
+            # Remove any symbols with zero or negative quantity after applying trades
+            current_holdings = {s: q for s, q in current_holdings.items() if q > 0}
+
+            total_value_for_day = 0.0
+            if current_holdings:
+                # Fetch closing prices for all held stocks for the current day
+                # This can be optimized by fetching in parallel
+                prices = {}
+                for symbol in current_holdings.keys():
+                    historical_stock_data = await polygon_service.get_historical_data(
+                        symbol,
+                        current_date,
+                        current_date,
+                        multiplier=1,
+                        timespan="day"
+                    )
+                    if historical_stock_data and historical_stock_data["results"]:
+                        # Use the close price for the day
+                        prices[symbol] = historical_stock_data["results"][0]["close"]
+                    else:
+                        # If no data for the day, try to get the latest available price
+                        latest_quote = await polygon_service.get_latest_quote(symbol)
+                        if latest_quote:
+                            prices[symbol] = latest_quote["price"]
+                        else:
+                            prices[symbol] = 0.0 # Or handle as an error/warning
+
+                for symbol, quantity in current_holdings.items():
+                    total_value_for_day += quantity * prices.get(symbol, 0.0)
+
+            historical_data_points.append(
+                PortfolioHistoricalDataPointSchema(
+                    timestamp=current_date,
+                    total_value=round(total_value_for_day, 2)
+                )
+            )
+            current_date += timedelta(days=1)
+
+        return historical_data_points
 
 trading_service = TradingService()

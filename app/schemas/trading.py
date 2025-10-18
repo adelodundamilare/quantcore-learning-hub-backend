@@ -145,3 +145,24 @@ class HistoricalDataSchema(BaseModel):
     symbol: str
     results_count: int
     results: List[HistoricalDataPointSchema]
+
+class PortfolioHistoricalDataPointSchema(BaseModel):
+    timestamp: datetime
+    total_value: float
+
+class PortfolioHistoricalDataSchema(BaseModel):
+    user_id: int
+    results: List[PortfolioHistoricalDataPointSchema]
+
+class OrderPreviewRequest(BaseModel):
+    symbol: str
+    order_type: OrderTypeEnum
+    quantity: Optional[int] = None
+    amount: Optional[float] = None # For selling in dollars
+    sell_in_dollars: bool = False
+
+class OrderPreview(BaseModel):
+    market_price: float
+    quantity: float
+    estimated_total: float
+    order_type: OrderTypeEnum

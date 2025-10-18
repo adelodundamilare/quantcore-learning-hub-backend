@@ -19,7 +19,10 @@ from app.schemas.trading import (
     PortfolioPositionSchema,
     TradeOrderCreate,
     TradeOrder,
-    CompanyDetailsSchema
+    CompanyDetailsSchema,
+    PortfolioHistoricalDataSchema,
+    OrderPreviewRequest,
+    OrderPreview
 )
 from app.services.polygon import polygon_service
 from app.services.trading import trading_service
@@ -230,6 +233,18 @@ def create_trading_router():
             data=new_order
         )
 
+    @router.post("/orders/preview", response_model=OrderPreview)
+    async def preview_order(
+        order_preview: OrderPreviewRequest,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context),
+    ):
+        """
+        Preview an order before placing it
+        Returns estimated cost/credit and current market price
+        """
+        return await trading_service.preview_order(db, context.user.id, order_preview)
+
     @router.get("/trade/history", response_model=APIResponse[List[TradeOrder]])
     def get_trade_history(
         db: Session = Depends(deps.get_db),
@@ -305,6 +320,40 @@ def create_trading_router():
         return APIResponse(
             message=f"Historical data for {ticker} retrieved successfully",
             data=historical_schema
+        )
+
+    @router.get("/portfolio/history", response_model=APIResponse[PortfolioHistoricalDataSchema])
+    async def get_portfolio_history(
+        from_date: str,
+        to_date: str,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Use YYYY-MM-DD"
+            )
+
+        if from_dt > to_dt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="from_date must be before to_date"
+            )
+
+        historical_data = await trading_service.get_portfolio_historical_data(
+            db,
+            user_id=context.user.id,
+            from_date=from_dt,
+            to_date=to_dt
+        )
+
+        return APIResponse(
+            message="Portfolio historical data retrieved successfully",
+            data=PortfolioHistoricalDataSchema(user_id=context.user.id, results=historical_data)
         )
 
     return router
