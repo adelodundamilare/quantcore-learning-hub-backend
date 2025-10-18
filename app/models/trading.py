@@ -4,16 +4,28 @@ from sqlalchemy.sql import func
 from app.core.database import Base
 from app.core.constants import OrderTypeEnum, OrderStatusEnum
 
-class WatchlistItem(Base):
-    __tablename__ = "watchlist_items"
+class UserWatchlist(Base):
+    __tablename__ = "user_watchlists"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, index=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User", back_populates="user_watchlists")
+    stocks = relationship("WatchlistStock", back_populates="watchlist", cascade="all, delete-orphan")
+
+class WatchlistStock(Base):
+    __tablename__ = "watchlist_stocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    watchlist_id = Column(Integer, ForeignKey("user_watchlists.id"), nullable=False)
     symbol = Column(String, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    user = relationship("User", back_populates="watchlist_items")
+    watchlist = relationship("UserWatchlist", back_populates="stocks")
 
 class AccountBalance(Base):
     __tablename__ = "account_balances"

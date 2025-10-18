@@ -33,7 +33,7 @@ class User(Base):
     user_answers = relationship("UserAnswer", back_populates="user", cascade="all, delete-orphan")
     course_enrollments = relationship("CourseEnrollment", back_populates="user")
     course_ratings = relationship("CourseRating", back_populates="user")
-    watchlist_items = relationship("WatchlistItem", back_populates="user", cascade="all, delete-orphan")
+    user_watchlists = relationship("UserWatchlist", back_populates="user", cascade="all, delete-orphan")
     account_balance = relationship("AccountBalance", back_populates="user", uselist=False, cascade="all, delete-orphan")
     portfolio_positions = relationship("PortfolioPosition", back_populates="user", cascade="all, delete-orphan")
     trade_orders = relationship("TradeOrder", back_populates="user", cascade="all, delete-orphan")

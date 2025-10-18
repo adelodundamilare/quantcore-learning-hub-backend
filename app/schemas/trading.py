@@ -60,23 +60,41 @@ class StockDetailsSchema(BaseModel):
     founded: Optional[str] = None
     sparkline_data: Optional[List[float]] = None
 
-class WatchlistItemBase(BaseModel):
+class WatchlistStockBase(BaseModel):
     symbol: str
 
-class WatchlistItemCreate(WatchlistItemBase):
+class WatchlistStockCreate(WatchlistStockBase):
     pass
 
-class WatchlistItem(WatchlistItemBase):
+class WatchlistStockUpdate(WatchlistStockBase):
+    symbol: Optional[str] = None
+
+class WatchlistStockSchema(WatchlistStockBase):
     id: int
-    user_id: int
+    watchlist_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
     sparkline_data: Optional[List[float]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
-class WatchlistItemUpdate(WatchlistItemBase):
-    symbol: Optional[str] = None
+class UserWatchlistBase(BaseModel):
+    name: str
+
+class UserWatchlistCreate(UserWatchlistBase):
+    pass
+
+class UserWatchlistUpdate(UserWatchlistBase):
+    name: Optional[str] = None
+
+class UserWatchlistSchema(UserWatchlistBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    stocks: List[WatchlistStockSchema] = []
+
+    model_config = ConfigDict(from_attributes=True)
 
 class AccountBalanceSchema(BaseModel):
     id: int
@@ -166,3 +184,14 @@ class OrderPreview(BaseModel):
     quantity: float
     estimated_total: float
     order_type: OrderTypeEnum
+
+class NewsArticle(BaseModel):
+    id: str
+    source: str
+    title: str
+    summary: Optional[str] = None
+    url: str
+    published_at: str
+    image_url: Optional[str] = None
+    related_symbols: List[str]
+    sentiment: Optional[str] = None

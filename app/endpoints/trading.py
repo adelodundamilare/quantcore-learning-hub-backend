@@ -13,8 +13,9 @@ from app.schemas.trading import (
     StockDetailsSchema,
     StockQuoteSchema,
     StockSchema,
-    WatchlistItem,
-    WatchlistItemCreate,
+    UserWatchlistCreate,
+    UserWatchlistUpdate,
+    UserWatchlistSchema,
     AccountBalanceSchema,
     PortfolioPositionSchema,
     TradeOrderCreate,
@@ -22,7 +23,8 @@ from app.schemas.trading import (
     CompanyDetailsSchema,
     PortfolioHistoricalDataSchema,
     OrderPreviewRequest,
-    OrderPreview
+    OrderPreview,
+    NewsArticle
 )
 from app.services.polygon import polygon_service
 from app.services.trading import trading_service
@@ -112,55 +114,7 @@ def create_trading_router():
             data=company_details
         )
 
-    @router.post("/watchlist", response_model=APIResponse[WatchlistItem], status_code=status.HTTP_201_CREATED)
-    def add_stock_to_watchlist(
-        watchlist_item_in: WatchlistItemCreate,
-        db: Session = Depends(deps.get_db),
-        context: UserContext = Depends(deps.get_current_user_with_context)
-    ):
-        new_item = trading_service.add_stock_to_watchlist(
-            db,
-            user_id=context.user.id,
-            watchlist_item_in=watchlist_item_in
-        )
-        return APIResponse(
-            message="Stock added to watchlist successfully",
-            data=new_item
-        )
 
-    @router.delete("/watchlist/{symbol}", response_model=APIResponse[WatchlistItem])
-    def remove_stock_from_watchlist(
-        symbol: str,
-        db: Session = Depends(deps.get_db),
-        context: UserContext = Depends(deps.get_current_user_with_context)
-    ):
-        deleted_item = trading_service.remove_stock_from_watchlist(
-            db,
-            user_id=context.user.id,
-            symbol=symbol
-        )
-        return APIResponse(
-            message="Stock removed from watchlist successfully",
-            data=deleted_item
-        )
-
-    @router.get("/watchlist", response_model=APIResponse[List[WatchlistItem]])
-    async def get_user_watchlist(
-        db: Session = Depends(deps.get_db),
-        context: UserContext = Depends(deps.get_current_user_with_context),
-        skip: int = 0,
-        limit: int = 100
-    ):
-        watchlist = await trading_service.get_user_watchlist(
-            db,
-            user_id=context.user.id,
-            skip=skip,
-            limit=limit
-        )
-        return APIResponse(
-            message="User watchlist retrieved successfully",
-            data=watchlist
-        )
 
     @router.get("/account/balance", response_model=APIResponse[AccountBalanceSchema])
     def get_account_balance(
@@ -190,6 +144,105 @@ def create_trading_router():
             message="User portfolio retrieved successfully",
             data=portfolio
         )
+
+    @router.post("/watchlists", response_model=APIResponse[UserWatchlistSchema], status_code=status.HTTP_201_CREATED)
+    async def create_user_watchlist(
+        watchlist_in: UserWatchlistCreate,
+        db: Session = Depends(deps.get_transactional_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        new_watchlist = await trading_service.create_user_watchlist(
+            db,
+            user_id=context.user.id,
+            watchlist_in=watchlist_in
+        )
+        return APIResponse(message="Watchlist created successfully", data=new_watchlist)
+
+    @router.get("/watchlists", response_model=APIResponse[List[UserWatchlistSchema]])
+    async def get_user_watchlists(
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context),
+        skip: int = 0,
+        limit: int = 100
+    ):
+        watchlists = await trading_service.get_user_watchlists(
+            db,
+            user_id=context.user.id,
+            skip=skip,
+            limit=limit
+        )
+        return APIResponse(message="User watchlists retrieved successfully", data=watchlists)
+
+    @router.get("/watchlists/{watchlist_id}", response_model=APIResponse[UserWatchlistSchema])
+    async def get_user_watchlist_by_id(
+        watchlist_id: int,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        watchlist = await trading_service.get_user_watchlist_by_id(
+            db,
+            user_id=context.user.id,
+            watchlist_id=watchlist_id
+        )
+        return APIResponse(message="Watchlist retrieved successfully", data=watchlist)
+
+    @router.put("/watchlists/{watchlist_id}", response_model=APIResponse[UserWatchlistSchema])
+    async def update_user_watchlist(
+        watchlist_id: int,
+        watchlist_in: UserWatchlistUpdate,
+        db: Session = Depends(deps.get_transactional_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        updated_watchlist = await trading_service.update_user_watchlist(
+            db,
+            user_id=context.user.id,
+            watchlist_id=watchlist_id,
+            watchlist_in=watchlist_in
+        )
+        return APIResponse(message="Watchlist updated successfully", data=updated_watchlist)
+
+    @router.delete("/watchlists/{watchlist_id}", response_model=APIResponse[dict])
+    async def delete_user_watchlist(
+        watchlist_id: int,
+        db: Session = Depends(deps.get_transactional_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        result = trading_service.delete_user_watchlist(
+            db,
+            user_id=context.user.id,
+            watchlist_id=watchlist_id
+        )
+        return APIResponse(message=result["message"])
+
+    @router.post("/watchlists/{watchlist_id}/stocks/{symbol}", response_model=APIResponse[UserWatchlistSchema], status_code=status.HTTP_201_CREATED)
+    async def add_stock_to_user_watchlist(
+        watchlist_id: int,
+        symbol: str,
+        db: Session = Depends(deps.get_transactional_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        updated_watchlist = await trading_service.add_stock_to_user_watchlist(
+            db,
+            user_id=context.user.id,
+            watchlist_id=watchlist_id,
+            symbol=symbol.upper()
+        )
+        return APIResponse(message="Stock added to watchlist successfully", data=updated_watchlist)
+
+    @router.delete("/watchlists/{watchlist_id}/stocks/{symbol}", response_model=APIResponse[UserWatchlistSchema])
+    async def remove_stock_from_user_watchlist(
+        watchlist_id: int,
+        symbol: str,
+        db: Session = Depends(deps.get_transactional_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        updated_watchlist = trading_service.remove_stock_from_user_watchlist(
+            db,
+            user_id=context.user.id,
+            watchlist_id=watchlist_id,
+            symbol=symbol.upper()
+        )
+        return APIResponse(message="Stock removed from watchlist successfully", data=updated_watchlist)
 
     @router.post("/trade/buy", response_model=APIResponse[TradeOrder], status_code=status.HTTP_201_CREATED)
     async def buy_stock(
@@ -351,5 +404,25 @@ def create_trading_router():
             message="Portfolio historical data retrieved successfully",
             data=PortfolioHistoricalDataSchema(user_id=context.user.id, results=historical_data)
         )
+
+    @router.get("/news", response_model=APIResponse[List[NewsArticle]])
+    async def get_market_news(
+        limit: int = 20,
+        symbols: Optional[str] = None,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        news_articles = await polygon_service.get_market_news(limit=limit, symbols=symbols)
+        return APIResponse(message="Market news retrieved successfully", data=[NewsArticle(**article) for article in news_articles])
+
+    @router.get("/news/{symbol}", response_model=APIResponse[List[NewsArticle]])
+    async def get_stock_news(
+        symbol: str,
+        limit: int = 10,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        news_articles = await polygon_service.get_stock_news(symbol=symbol, limit=limit)
+        return APIResponse(message=f"News for {symbol} retrieved successfully", data=[NewsArticle(**article) for article in news_articles])
 
     return router

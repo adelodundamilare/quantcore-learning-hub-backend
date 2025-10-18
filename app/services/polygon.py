@@ -188,4 +188,31 @@ class PolygonService:
         }
         return combined_details
 
+    async def get_market_news(self, limit: int = 20, symbols: Optional[str] = None) -> List[dict]:
+        params = {"limit": limit}
+        if symbols:
+            params["tickers"] = symbols
+
+        news_data = await self._make_request("/v2/reference/news", params)
+        if not news_data:
+            return []
+
+        articles = []
+        for article in news_data.get("results", []):
+            articles.append({
+                "id": article.get("id", ""),
+                "source": article.get("publisher", {}).get("name", "Unknown"),
+                "title": article.get("title", ""),
+                "summary": article.get("description", ""),
+                "url": article.get("article_url", ""),
+                "published_at": article.get("published_utc", ""),
+                "image_url": article.get("image_url"),
+                "related_symbols": article.get("tickers", []),
+                "sentiment": None # Not available in free tier
+            })
+        return articles
+
+    async def get_stock_news(self, symbol: str, limit: int = 10) -> List[dict]:
+        return await self.get_market_news(limit=limit, symbols=symbol.upper())
+
 polygon_service = PolygonService()

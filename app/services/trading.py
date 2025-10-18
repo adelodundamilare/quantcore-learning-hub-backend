@@ -1,29 +1,32 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 from collections import defaultdict
 import logging
+import asyncio
+
 from app.crud.user import user as user_crud
 from app.crud.role import role as user_role
-
 from app.schemas.trading import (
-    WatchlistItemCreate,
-    WatchlistItem,
+    WatchlistStockSchema,
+    UserWatchlistCreate,
+    UserWatchlistUpdate,
+    UserWatchlistSchema,
     AccountBalanceSchema,
     PortfolioPositionSchema,
     TradeOrderCreate,
     TradeOrder,
     PortfolioHistoricalDataPointSchema,
-    PortfolioHistoricalDataSchema,
     OrderPreviewRequest,
     OrderPreview
 )
 from app.crud.trading import (
-    watchlist_item as crud_watchlist_item,
+    user_watchlist as crud_user_watchlist,
+    watchlist_stock as crud_watchlist_stock,
     account_balance as crud_account_balance,
     portfolio_position as crud_portfolio_position,
     trade_order as crud_trade_order
@@ -53,7 +56,7 @@ def rate_limit_orders(max_orders: int = 10, window_minutes: int = 1):
                 logger.warning(f"Rate limit exceeded for user {user_id}")
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Too many orders. Maximum {max_orders} orders per {window_minutes} minute(s). Try again later."
+                    detail=f"Too many orders. Maximum {max_orders} orders per {window_minutes} minute(s)."
                 )
 
             order_limits[user_id].append(now)
@@ -61,69 +64,281 @@ def rate_limit_orders(max_orders: int = 10, window_minutes: int = 1):
         return wrapper
     return decorator
 
+
 class TradingService:
-    def add_stock_to_watchlist(
+
+    async def create_user_watchlist(
         self,
         db: Session,
         user_id: int,
-        watchlist_item_in: WatchlistItemCreate
-    ) -> WatchlistItem:
-        existing_item = crud_watchlist_item.get_by_user_and_symbol(
-            db,
-            user_id=user_id,
-            symbol=watchlist_item_in.symbol
+        watchlist_in: UserWatchlistCreate
+    ) -> UserWatchlistSchema:
+        existing = crud_user_watchlist.get_by_user_and_name(
+            db, user_id=user_id, name=watchlist_in.name
         )
 
-        if existing_item:
+        if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Stock already in watchlist."
+                detail="Watchlist with this name already exists"
             )
 
-        new_item_data = watchlist_item_in.model_dump()
-        new_item_data["user_id"] = user_id
+        watchlist_data = watchlist_in.model_dump()
+        watchlist_data["user_id"] = user_id
 
-        return crud_watchlist_item.create(db, obj_in=new_item_data)
+        new_watchlist = crud_user_watchlist.create(db, obj_in=watchlist_data)
+        return UserWatchlistSchema.model_validate(new_watchlist)
 
-    def remove_stock_from_watchlist(
-        self,
-        db: Session,
-        user_id: int,
-        symbol: str
-    ) -> WatchlistItem:
-        existing_item = crud_watchlist_item.get_by_user_and_symbol(
-            db,
-            user_id=user_id,
-            symbol=symbol
-        )
-
-        if not existing_item:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Stock not found in watchlist."
-            )
-
-        crud_watchlist_item.delete(db, id=existing_item.id)
-        return existing_item
-
-    async def get_user_watchlist(
+    async def get_user_watchlists(
         self,
         db: Session,
         user_id: int,
         skip: int = 0,
         limit: int = 100
-    ) -> List[WatchlistItem]:
-        watchlist_items = crud_watchlist_item.get_multi_by_user(
-            db,
-            user_id=user_id,
-            skip=skip,
-            limit=limit
+    ) -> List[UserWatchlistSchema]:
+        watchlists = crud_user_watchlist.get_multi_by_user(
+            db, user_id=user_id, skip=skip, limit=limit
         )
 
-        for item in watchlist_items:
-            item.sparkline_data = await polygon_service._get_sparkline_data(item.symbol)
+        result_watchlists = []
 
-        return [WatchlistItem.model_validate(item) for item in watchlist_items]
+        for wl in watchlists:
+            symbols = [stock.symbol for stock in wl.stocks]
+
+            sparkline_tasks = [
+                polygon_service._get_sparkline_data(symbol)
+                for symbol in symbols
+            ]
+            sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
+
+            stocks_with_sparkline = []
+            for stock_item, sparkline_data in zip(wl.stocks, sparkline_results):
+                if isinstance(sparkline_data, Exception):
+                    logger.error(f"Error fetching sparkline for {stock_item.symbol}: {sparkline_data}")
+                    sparkline_data = []
+
+                stocks_with_sparkline.append(
+                    WatchlistStockSchema.model_validate(
+                        stock_item,
+                        update={"sparkline_data": sparkline_data}
+                    )
+                )
+
+            result_watchlists.append(
+                UserWatchlistSchema.model_validate(
+                    wl,
+                    update={"stocks": stocks_with_sparkline}
+                )
+            )
+
+        return result_watchlists
+
+    async def get_user_watchlist_by_id(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_id: int
+    ) -> UserWatchlistSchema:
+        watchlist = crud_user_watchlist.get(db, id=watchlist_id)
+
+        if not watchlist or watchlist.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Watchlist not found"
+            )
+
+        symbols = [stock.symbol for stock in watchlist.stocks]
+        sparkline_tasks = [
+            polygon_service._get_sparkline_data(symbol)
+            for symbol in symbols
+        ]
+        sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
+
+        stocks_with_sparkline = []
+        for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
+            if isinstance(sparkline_data, Exception):
+                logger.error(f"Error fetching sparkline for {stock_item.symbol}: {sparkline_data}")
+                sparkline_data = []
+
+            stocks_with_sparkline.append(
+                WatchlistStockSchema.model_validate(
+                    stock_item,
+                    update={"sparkline_data": sparkline_data}
+                )
+            )
+
+        return UserWatchlistSchema.model_validate(
+            watchlist,
+            update={"stocks": stocks_with_sparkline}
+        )
+
+    async def update_user_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_id: int,
+        watchlist_in: UserWatchlistUpdate
+    ) -> UserWatchlistSchema:
+        watchlist = crud_user_watchlist.get(db, id=watchlist_id)
+
+        if not watchlist or watchlist.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Watchlist not found"
+            )
+
+        if watchlist_in.name and watchlist_in.name != watchlist.name:
+            existing = crud_user_watchlist.get_by_user_and_name(
+                db, user_id=user_id, name=watchlist_in.name
+            )
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Watchlist with this name already exists"
+                )
+
+        updated_watchlist = crud_user_watchlist.update(
+            db, db_obj=watchlist, obj_in=watchlist_in
+        )
+        return UserWatchlistSchema.model_validate(updated_watchlist)
+
+    def delete_user_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_id: int
+    ) -> dict:
+        watchlist = crud_user_watchlist.get(db, id=watchlist_id)
+
+        if not watchlist or watchlist.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Watchlist not found"
+            )
+
+        crud_user_watchlist.remove(db, id=watchlist_id)
+        return {"message": "Watchlist deleted successfully"}
+
+    async def add_stock_to_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_id: int,
+        symbol: str
+    ) -> UserWatchlistSchema:
+        watchlist = crud_user_watchlist.get(db, id=watchlist_id)
+
+        if not watchlist or watchlist.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Watchlist not found"
+            )
+
+        existing = crud_watchlist_stock.get_by_watchlist_and_symbol(
+            db, watchlist_id=watchlist_id, symbol=symbol.upper()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stock already in watchlist"
+            )
+
+        try:
+            quote = await polygon_service.get_latest_quote(symbol.upper())
+            if not quote:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Stock symbol {symbol.upper()} not found"
+                )
+        except Exception as e:
+            logger.error(f"Error validating symbol {symbol}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid stock symbol: {symbol}"
+            )
+
+        crud_watchlist_stock.create(
+            db,
+            obj_in={"watchlist_id": watchlist_id, "symbol": symbol.upper()}
+        )
+        db.refresh(watchlist)
+
+        symbols = [stock.symbol for stock in watchlist.stocks]
+        sparkline_tasks = [
+            polygon_service._get_sparkline_data(sym)
+            for sym in symbols
+        ]
+        sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
+
+        stocks_with_sparkline = []
+        for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
+            if isinstance(sparkline_data, Exception):
+                sparkline_data = []
+
+            stocks_with_sparkline.append(
+                WatchlistStockSchema.model_validate(
+                    stock_item,
+                    update={"sparkline_data": sparkline_data}
+                )
+            )
+
+        return UserWatchlistSchema.model_validate(
+            watchlist,
+            update={"stocks": stocks_with_sparkline}
+        )
+
+    async def remove_stock_from_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_id: int,
+        symbol: str
+    ) -> UserWatchlistSchema:
+        watchlist = crud_user_watchlist.get(db, id=watchlist_id)
+
+        if not watchlist or watchlist.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Watchlist not found"
+            )
+
+        stock = crud_watchlist_stock.get_by_watchlist_and_symbol(
+            db, watchlist_id=watchlist_id, symbol=symbol.upper()
+        )
+        if not stock:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stock not in watchlist"
+            )
+
+        crud_watchlist_stock.remove(db, id=stock.id)
+        db.refresh(watchlist)
+
+        symbols = [s.symbol for s in watchlist.stocks]
+        sparkline_tasks = [
+            polygon_service._get_sparkline_data(sym)
+            for sym in symbols
+        ]
+        sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
+
+        stocks_with_sparkline = []
+        for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
+            if isinstance(sparkline_data, Exception):
+                sparkline_data = []
+
+            stocks_with_sparkline.append(
+                WatchlistStockSchema.model_validate(
+                    stock_item,
+                    update={"sparkline_data": sparkline_data}
+                )
+            )
+
+        return UserWatchlistSchema.model_validate(
+            watchlist,
+            update={"stocks": stocks_with_sparkline}
+        )
+
+    # ============ ACCOUNT BALANCE METHODS ============
 
     def get_account_balance(
         self,
@@ -135,10 +350,7 @@ class TradingService:
         if not account:
             account = crud_account_balance.create(
                 db,
-                obj_in={
-                    "user_id": user_id,
-                    "balance": 0.00
-                }
+                obj_in={"user_id": user_id, "balance": Decimal("0.00")}
             )
 
         return AccountBalanceSchema.model_validate(account)
@@ -147,13 +359,13 @@ class TradingService:
         self,
         db: Session,
         student_id: int,
-        amount: float,
+        amount: Decimal,
         current_user_context: UserContext
     ) -> AccountBalanceSchema:
         if permission_helper.is_student(current_user_context):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Students cannot add funds to other accounts."
+                detail="Students cannot add funds to accounts"
             )
 
         if not (permission_helper.is_super_admin(current_user_context) or
@@ -161,30 +373,39 @@ class TradingService:
                 permission_helper.is_teacher(current_user_context)):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to add funds to student accounts."
+                detail="Insufficient permissions"
             )
 
         student_user = user_crud.get(db, id=student_id)
         if not student_user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Student not found"
+            )
 
         student_role = user_role.get_by_name(db, name=RoleEnum.STUDENT)
         if not student_role:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Student role not configured"
+            )
 
         student_association = user_crud.get_association_by_user_school_role(
-            db, user_id=student_id, school_id=current_user_context.school.id, role_id=student_role.id
+            db,
+            user_id=student_id,
+            school_id=current_user_context.school.id,
+            role_id=student_role.id
         )
         if not student_association:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target user is not a student in your school."
+                detail="Student not in your school"
             )
 
         if amount <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Amount must be positive."
+                detail="Amount must be positive"
             )
 
         account = crud_account_balance.get_by_user_id(db, user_id=student_id)
@@ -192,20 +413,20 @@ class TradingService:
         if not account:
             account = crud_account_balance.create(
                 db,
-                obj_in={
-                    "user_id": student_id,
-                    "balance": amount
-                }
+                obj_in={"user_id": student_id, "balance": amount}
             )
         else:
-            updated_balance = account.balance + amount
+            new_balance = account.balance + amount
             account = crud_account_balance.update(
                 db,
                 db_obj=account,
-                obj_in={"balance": updated_balance}
+                obj_in={"balance": new_balance}
             )
 
-        logger.info(f"User {current_user_context.user.id} added {amount} to student {student_id}'s account. New balance: {account.balance}")
+        logger.info(
+            f"User {current_user_context.user.id} added ${amount} "
+            f"to student {student_id}. New balance: ${account.balance}"
+        )
 
         crud_transaction.create(
             db,
@@ -219,21 +440,25 @@ class TradingService:
 
         return AccountBalanceSchema.model_validate(account)
 
-    def get_portfolio(
+    # ============ PORTFOLIO METHODS ============
+
+    async def get_portfolio(
         self,
         db: Session,
         user_id: int,
         skip: int = 0,
         limit: int = 100
     ) -> List[PortfolioPositionSchema]:
-        portfolio = crud_portfolio_position.get_multi_by_user(
+        positions = crud_portfolio_position.get_multi_by_user(
             db,
             user_id=user_id,
             skip=skip,
             limit=limit
         )
 
-        return [PortfolioPositionSchema.model_validate(p) for p in portfolio]
+        return [PortfolioPositionSchema.model_validate(p) for p in positions]
+
+    # ============ TRADING METHODS ============
 
     @rate_limit_orders(max_orders=10, window_minutes=1)
     async def place_order(
@@ -242,183 +467,207 @@ class TradingService:
         user_id: int,
         order_in: TradeOrderCreate
     ) -> TradeOrder:
-        try:
-            account = crud_account_balance.get_by_user_id(db, user_id=user_id)
-
-            if not account:
-                account = crud_account_balance.create(
-                    db,
-                    obj_in={
-                        "user_id": user_id,
-                        "balance": 0.00
-                    }
-                )
-
-            if order_in.quantity <= 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Quantity must be greater than 0"
-                )
-
-            quote = await polygon_service.get_latest_quote(order_in.symbol)
-
-            if not quote or not quote.get('p'):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Could not get current price for {order_in.symbol}"
-                )
-
-            current_price = float(quote['p'])
-
-            if current_price <= 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid stock price"
-                )
-
-            executed_price = current_price
-            total_amount = round(order_in.quantity * executed_price, 2)
-
-            if order_in.order_type == OrderTypeEnum.BUY:
-                if account.balance < total_amount:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Insufficient funds. Required: ${total_amount:.2f}, Available: ${account.balance:.2f}"
-                    )
-
-                account.balance = round(account.balance - total_amount, 2)
-                crud_account_balance.update(
-                    db,
-                    db_obj=account,
-                    obj_in={"balance": account.balance}
-                )
-
-                position = crud_portfolio_position.get_by_user_and_symbol(
-                    db,
-                    user_id=user_id,
-                    symbol=order_in.symbol
-                )
-
-                if position:
-                    total_cost = (position.quantity * position.average_price) + total_amount
-                    total_quantity = position.quantity + order_in.quantity
-                    new_avg_price = round(total_cost / total_quantity, 2)
-
-                    crud_portfolio_position.update(
-                        db,
-                        db_obj=position,
-                        obj_in={
-                            "quantity": total_quantity,
-                            "average_price": new_avg_price
-                        }
-                    )
-                else:
-                    crud_portfolio_position.create(
-                        db,
-                        obj_in={
-                            "user_id": user_id,
-                            "symbol": order_in.symbol,
-                            "quantity": order_in.quantity,
-                            "average_price": executed_price
-                        }
-                    )
-
-            elif order_in.order_type == OrderTypeEnum.SELL:
-                position = crud_portfolio_position.get_by_user_and_symbol(
-                    db,
-                    user_id=user_id,
-                    symbol=order_in.symbol
-                )
-
-                if not position:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"You don't own any shares of {order_in.symbol}"
-                    )
-
-                if position.quantity < order_in.quantity:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Insufficient shares. You own {position.quantity}, trying to sell {order_in.quantity}"
-                    )
-
-                account.balance = round(account.balance + total_amount, 2)
-                crud_account_balance.update(
-                    db,
-                    db_obj=account,
-                    obj_in={"balance": account.balance}
-                )
-
-                new_quantity = position.quantity - order_in.quantity
-
-                if new_quantity == 0:
-                    crud_portfolio_position.delete(db, id=position.id)
-                else:
-                    crud_portfolio_position.update(
-                        db,
-                        db_obj=position,
-                        obj_in={"quantity": new_quantity}
-                    )
-
-            trade_data = order_in.model_dump()
-            trade_data.update({
-                "user_id": user_id,
-                "status": OrderStatusEnum.FILLED,
-                "executed_price": executed_price,
-                "total_amount": total_amount,
-                "executed_at": datetime.utcnow()
-            })
-
-            new_trade = crud_trade_order.create(db, obj_in=trade_data)
-
-            db.commit()
-
-            return TradeOrder.model_validate(new_trade)
-
-        except HTTPException:
-            db.rollback()
-            raise
-        except SQLAlchemyError as e:
-            db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Database error: {str(e)}"
+        account = crud_account_balance.get_by_user_id(db, user_id=user_id)
+        if not account:
+            account = crud_account_balance.create(
+                db,
+                obj_in={"user_id": user_id, "balance": Decimal("0.00")}
             )
-        except Exception as e:
-            db.rollback()
+
+        if order_in.quantity <= 0:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error processing order: {str(e)}"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Quantity must be greater than 0"
             )
+
+        quote = await polygon_service.get_latest_quote(order_in.symbol.upper())
+        if not quote or not quote.get('p'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not get price for {order_in.symbol}"
+            )
+
+        current_price = Decimal(str(quote['p']))
+        if current_price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid stock price"
+            )
+
+        executed_price = current_price
+        total_amount = (Decimal(str(order_in.quantity)) * executed_price).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+
+        if order_in.order_type == OrderTypeEnum.BUY:
+            await self._process_buy_order(
+                db, user_id, order_in, account, executed_price, total_amount
+            )
+        elif order_in.order_type == OrderTypeEnum.SELL:
+            await self._process_sell_order(
+                db, user_id, order_in, account, executed_price, total_amount
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid order type"
+            )
+
+        trade_data = order_in.model_dump()
+        trade_data.update({
+            "user_id": user_id,
+            "symbol": order_in.symbol.upper(),
+            "status": OrderStatusEnum.FILLED,
+            "executed_price": executed_price,
+            "total_amount": total_amount,
+            "executed_at": datetime.utcnow()
+        })
+
+        new_trade = crud_trade_order.create(db, obj_in=trade_data)
+
+        logger.info(
+            f"Order placed: user={user_id}, symbol={order_in.symbol}, "
+            f"type={order_in.order_type}, qty={order_in.quantity}, price={executed_price}"
+        )
+
+        return TradeOrder.model_validate(new_trade)
+
+    async def _process_buy_order(
+        self,
+        db: Session,
+        user_id: int,
+        order_in: TradeOrderCreate,
+        account,
+        executed_price: Decimal,
+        total_amount: Decimal
+    ):
+        if account.balance < total_amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient funds. Required: ${total_amount:.2f}, "
+                       f"Available: ${account.balance:.2f}"
+            )
+
+        new_balance = account.balance - total_amount
+        crud_account_balance.update(
+            db,
+            db_obj=account,
+            obj_in={"balance": new_balance}
+        )
+
+        position = crud_portfolio_position.get_by_user_and_symbol(
+            db,
+            user_id=user_id,
+            symbol=order_in.symbol.upper()
+        )
+
+        if position:
+            total_cost = (
+                Decimal(str(position.quantity)) * Decimal(str(position.average_price))
+            ) + total_amount
+            total_quantity = Decimal(str(position.quantity)) + Decimal(str(order_in.quantity))
+            new_avg_price = (total_cost / total_quantity).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+
+            crud_portfolio_position.update(
+                db,
+                db_obj=position,
+                obj_in={
+                    "quantity": int(total_quantity),
+                    "average_price": new_avg_price
+                }
+            )
+        else:
+            crud_portfolio_position.create(
+                db,
+                obj_in={
+                    "user_id": user_id,
+                    "symbol": order_in.symbol.upper(),
+                    "quantity": order_in.quantity,
+                    "average_price": executed_price
+                }
+            )
+
+    async def _process_sell_order(
+        self,
+        db: Session,
+        user_id: int,
+        order_in: TradeOrderCreate,
+        account,
+        executed_price: Decimal,
+        total_amount: Decimal
+    ):
+        position = crud_portfolio_position.get_by_user_and_symbol(
+            db,
+            user_id=user_id,
+            symbol=order_in.symbol.upper()
+        )
+
+        if not position:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"You don't own any shares of {order_in.symbol}"
+            )
+
+        if position.quantity < order_in.quantity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient shares. You own {position.quantity}, "
+                       f"trying to sell {order_in.quantity}"
+            )
+
+        new_balance = account.balance + total_amount
+        crud_account_balance.update(
+            db,
+            db_obj=account,
+            obj_in={"balance": new_balance}
+        )
+
+        new_quantity = position.quantity - order_in.quantity
+
+        if new_quantity == 0:
+            crud_portfolio_position.delete(db, id=position.id)
+        else:
+            crud_portfolio_position.update(
+                db,
+                db_obj=position,
+                obj_in={"quantity": new_quantity}
+            )
+
     async def preview_order(
         self,
         db: Session,
         user_id: int,
         order_preview: OrderPreviewRequest
     ) -> OrderPreview:
-        quote = await polygon_service.get_latest_quote(order_preview.symbol)
+        quote = await polygon_service.get_latest_quote(order_preview.symbol.upper())
 
         if not quote or not quote.get('p'):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Could not get current price for {order_preview.symbol}"
+                detail=f"Could not get price for {order_preview.symbol}"
             )
 
-        current_price = float(quote['p'])
+        current_price = Decimal(str(quote['p']))
 
         if order_preview.sell_in_dollars and order_preview.order_type == OrderTypeEnum.SELL:
-            quantity = order_preview.amount / current_price
+            quantity = (Decimal(str(order_preview.amount)) / current_price).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
         else:
-            quantity = order_preview.quantity
+            quantity = Decimal(str(order_preview.quantity))
 
-        estimated_total = round(quantity * current_price, 2)
+        estimated_total = (quantity * current_price).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
 
-        return {
-            "market_price": current_price,
-            "quantity": quantity,
-            "estimated_total": estimated_total,
-            "order_type": order_preview.order_type
-        }
+        return OrderPreview(
+            market_price=float(current_price),
+            quantity=float(quantity),
+            estimated_total=float(estimated_total),
+            order_type=order_preview.order_type
+        )
 
     def get_trade_history(
         self,
@@ -427,14 +676,14 @@ class TradingService:
         skip: int = 0,
         limit: int = 100
     ) -> List[TradeOrder]:
-        history = crud_trade_order.get_multi_by_user(
+        trades = crud_trade_order.get_multi_by_user(
             db,
             user_id=user_id,
             skip=skip,
             limit=limit
         )
 
-        return [TradeOrder.model_validate(t) for t in history]
+        return [TradeOrder.model_validate(t) for t in trades]
 
     async def get_portfolio_historical_data(
         self,
@@ -449,79 +698,96 @@ class TradingService:
                 detail="from_date must be before to_date"
             )
 
-        # Get all trade orders for the user
-        all_trade_orders = crud_trade_order.get_multi_by_user(db, user_id=user_id)
+        all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
 
-        # Filter orders within the historical range
-        relevant_orders = [
-            order for order in all_trade_orders
-            if from_date <= order.executed_at.date() <= to_date
-        ]
-        relevant_orders.sort(key=lambda x: x.executed_at)
+        current_holdings = defaultdict(Decimal)
+        initial_trades = [t for t in all_trades if t.executed_at.date() < from_date]
 
-        current_holdings = defaultdict(float)
+        for trade in initial_trades:
+            qty = Decimal(str(trade.quantity))
+            if trade.order_type == OrderTypeEnum.BUY:
+                current_holdings[trade.symbol] += qty
+            elif trade.order_type == OrderTypeEnum.SELL:
+                current_holdings[trade.symbol] -= qty
 
-        # Get initial portfolio state before from_date
-        initial_orders = [
-            order for order in all_trade_orders
-            if order.executed_at.date() < from_date
-        ]
-        for order in initial_orders:
-            if order.order_type == OrderTypeEnum.BUY:
-                current_holdings[order.symbol] += order.quantity
-            elif order.order_type == OrderTypeEnum.SELL:
-                current_holdings[order.symbol] -= order.quantity
-
-        # Remove any symbols with zero or negative quantity
         current_holdings = {s: q for s, q in current_holdings.items() if q > 0}
 
-        historical_data_points = []
+        relevant_trades = [
+            t for t in all_trades
+            if from_date <= t.executed_at.date() <= to_date
+        ]
+        relevant_trades.sort(key=lambda x: x.executed_at)
+
+        historical_data = []
         current_date = from_date
 
         while current_date <= to_date:
-            # Apply trades that happened on current_date
-            for order in relevant_orders:
-                if order.executed_at.date() == current_date.date():
-                    if order.order_type == OrderTypeEnum.BUY:
-                        current_holdings[order.symbol] += order.quantity
-                    elif order.order_type == OrderTypeEnum.SELL:
-                        current_holdings[order.symbol] -= order.quantity
+            for trade in relevant_trades:
+                if trade.executed_at.date() == current_date.date():
+                    qty = Decimal(str(trade.quantity))
+                    if trade.order_type == OrderTypeEnum.BUY:
+                        current_holdings[trade.symbol] += qty
+                    elif trade.order_type == OrderTypeEnum.SELL:
+                        current_holdings[trade.symbol] -= qty
 
-            # Remove any symbols with zero or negative quantity after applying trades
             current_holdings = {s: q for s, q in current_holdings.items() if q > 0}
 
-            total_value_for_day = 0.0
+            total_value = Decimal('0.00')
+
             if current_holdings:
-                prices = {}
-                for symbol in current_holdings.keys():
-                    historical_stock_data = await polygon_service.get_historical_data(
-                        symbol,
-                        current_date,
-                        current_date,
-                        multiplier=1,
-                        timespan="day"
-                    )
-                    if historical_stock_data and historical_stock_data["results"]:
-                        prices[symbol] = historical_stock_data["results"][0]["close"]
-                    else:
-                        # If no data for the day, try to get the latest available price
-                        latest_quote = await polygon_service.get_latest_quote(symbol)
-                        if latest_quote:
-                            prices[symbol] = latest_quote["price"]
-                        else:
-                            prices[symbol] = 0.0
+                symbols = list(current_holdings.keys())
+                price_tasks = [
+                    self._get_historical_price(symbol, current_date)
+                    for symbol in symbols
+                ]
+                prices = await asyncio.gather(*price_tasks, return_exceptions=True)
 
-                for symbol, quantity in current_holdings.items():
-                    total_value_for_day += quantity * prices.get(symbol, 0.0)
+                for symbol, price in zip(symbols, prices):
+                    if isinstance(price, Exception):
+                        logger.error(f"Error fetching price for {symbol}: {price}")
+                        price = Decimal('0.00')
 
-            historical_data_points.append(
+                    total_value += current_holdings[symbol] * Decimal(str(price))
+
+            historical_data.append(
                 PortfolioHistoricalDataPointSchema(
                     timestamp=current_date,
-                    total_value=round(total_value_for_day, 2)
+                    total_value=float(total_value.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    ))
                 )
             )
+
             current_date += timedelta(days=1)
 
-        return historical_data_points
+        return historical_data
+
+    async def _get_historical_price(
+        self,
+        symbol: str,
+        date: datetime
+    ) -> float:
+        try:
+            historical_data = await polygon_service.get_historical_data(
+                symbol,
+                date,
+                date,
+                multiplier=1,
+                timespan="day"
+            )
+
+            if historical_data and historical_data.get("results"):
+                return float(historical_data["results"][0]["close"])
+
+            latest_quote = await polygon_service.get_latest_quote(symbol)
+            if latest_quote and latest_quote.get("price"):
+                return float(latest_quote["price"])
+
+            return 0.0
+
+        except Exception as e:
+            logger.error(f"Error fetching historical price for {symbol}: {e}")
+            return 0.0
+
 
 trading_service = TradingService()
