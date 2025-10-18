@@ -56,6 +56,12 @@ class InvoiceSchema(BaseModel):
     invoice_pdf: Optional[str] = None
     created_at: datetime
 
+class InvoiceCreate(BaseModel):
+    school_id: int
+    amount: float
+    description: Optional[str] = None
+    currency: str = "usd"
+
 class StripeProductBase(BaseModel):
     name: str
     description: Optional[str] = None

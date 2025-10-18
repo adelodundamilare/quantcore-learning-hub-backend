@@ -83,6 +83,27 @@ class StripeService:
         invoices = await self._make_request(stripe.Invoice.list, customer=stripe_customer_id)
         return invoices.data
 
+    async def create_invoice(self, stripe_customer_id: str, amount: float, currency: str, description: Optional[str] = None) -> stripe.Invoice:
+        unit_amount_cents = int(amount * 100)
+        
+        invoice_item = await self._make_request(
+            stripe.InvoiceItem.create,
+            customer=stripe_customer_id,
+            amount=unit_amount_cents,
+            currency=currency,
+            description=description
+        )
+
+        invoice = await self._make_request(
+            stripe.Invoice.create,
+            customer=stripe_customer_id,
+            collection_method='send_invoice',
+            days_until_due=7,
+            auto_advance=False
+        )
+
+        return invoice
+
     async def create_product(self, name: str, description: Optional[str] = None) -> stripe.Product:
         product = await self._make_request(
             stripe.Product.create,

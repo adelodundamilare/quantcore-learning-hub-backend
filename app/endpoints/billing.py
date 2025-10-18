@@ -13,6 +13,7 @@ from app.schemas.billing import (
     PaymentMethodAdd,
     PaymentMethodSchema,
     InvoiceSchema,
+    InvoiceCreate,
     StripeProductCreate,
     StripeProductUpdate,
     StripeProductSchema,
@@ -21,6 +22,7 @@ from app.schemas.billing import (
     StripePriceSchema
 )
 from app.core.constants import RoleEnum
+from app.models.billing import StripeCustomer
 
 router = APIRouter()
 
@@ -234,3 +236,21 @@ async def delete_stripe_price(
 ):
     price = await stripe_service.update_price(price_id, active=False)
     return APIResponse(message="Stripe price deactivated successfully", data=price)
+
+@router.post("/admin/invoices", response_model=APIResponse[InvoiceSchema], status_code=status.HTTP_201_CREATED, dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+async def create_invoice_for_school(
+    invoice_in: InvoiceCreate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    school_customer = db.query(StripeCustomer).filter(StripeCustomer.user_id == invoice_in.school_id).first()
+    if not school_customer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this school.")
+
+    invoice = await stripe_service.create_invoice(
+        stripe_customer_id=school_customer.stripe_customer_id,
+        amount=invoice_in.amount,
+        currency=invoice_in.currency,
+        description=invoice_in.description
+    )
+    return APIResponse(message="Invoice created successfully", data=invoice)
