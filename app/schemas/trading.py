@@ -28,6 +28,7 @@ class StockSchema(BaseModel):
     share_class_figi: Optional[str] = None
     last_updated_utc: Optional[str] = None
     delisted_utc: Optional[str] = None
+    sparkline_data: Optional[List[float]] = None
 
 class CompanyDetailsSchema(BaseModel):
     symbol: str
@@ -57,6 +58,7 @@ class StockDetailsSchema(BaseModel):
     employees: Optional[int] = None
     headquarters: Optional[str] = None
     founded: Optional[str] = None
+    sparkline_data: Optional[List[float]] = None
 
 class WatchlistItemBase(BaseModel):
     symbol: str
@@ -69,6 +71,7 @@ class WatchlistItem(WatchlistItemBase):
     user_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    sparkline_data: Optional[List[float]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

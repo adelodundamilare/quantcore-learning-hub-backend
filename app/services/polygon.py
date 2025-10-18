@@ -113,6 +113,14 @@ class PolygonService:
             "results": historical_results
         }
 
+    async def _get_sparkline_data(self, ticker: str, days: int = 30) -> Optional[List[float]]:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        historical_data = await self.get_historical_data(ticker, start_date, end_date, timespan="day")
+        if historical_data and historical_data.get("results"):
+            return [result["close"] for result in historical_data["results"]]
+        return None
+
     async def get_all_stocks(self, search: Optional[str] = None, active: Optional[bool] = True, limit: int = 100, offset: int = 0) -> List[dict]:
         path = f"/v3/reference/tickers"
         params = {
@@ -132,6 +140,7 @@ class PolygonService:
 
         stocks = []
         for result in results:
+            sparkline_data = await self._get_sparkline_data(result.get("ticker"))
             stocks.append({
                 "symbol": result.get("ticker"),
                 "name": result.get("name"),
@@ -145,7 +154,8 @@ class PolygonService:
                 "composite_figi": result.get("composite_figi"),
                 "share_class_figi": result.get("share_class_figi"),
                 "last_updated_utc": result.get("last_updated_utc"),
-                "delisted_utc": result.get("delisted_utc")
+                "delisted_utc": result.get("delisted_utc"),
+                "sparkline_data": sparkline_data
             })
         return stocks
 
@@ -174,6 +184,7 @@ class PolygonService:
             "employees": company_details.get("employees") if company_details else None,
             "headquarters": company_details.get("headquarters") if company_details else None,
             "founded": company_details.get("founded") if company_details else None,
+            "sparkline_data": await self._get_sparkline_data(ticker)
         }
         return combined_details
 

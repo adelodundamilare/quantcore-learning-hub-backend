@@ -142,13 +142,13 @@ def create_trading_router():
         )
 
     @router.get("/watchlist", response_model=APIResponse[List[WatchlistItem]])
-    def get_user_watchlist(
+    async def get_user_watchlist(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
         skip: int = 0,
         limit: int = 100
     ):
-        watchlist = trading_service.get_user_watchlist(
+        watchlist = await trading_service.get_user_watchlist(
             db,
             user_id=context.user.id,
             skip=skip,

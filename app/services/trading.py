@@ -97,19 +97,24 @@ class TradingService:
         crud_watchlist_item.remove(db, id=existing_item.id)
         return existing_item
 
-    def get_user_watchlist(
+    async def get_user_watchlist(
         self,
         db: Session,
         user_id: int,
         skip: int = 0,
         limit: int = 100
     ) -> List[WatchlistItem]:
-        return crud_watchlist_item.get_multi_by_user(
+        watchlist_items = crud_watchlist_item.get_multi_by_user(
             db,
             user_id=user_id,
             skip=skip,
             limit=limit
         )
+
+        for item in watchlist_items:
+            item.sparkline_data = await polygon_service._get_sparkline_data(item.symbol)
+
+        return [WatchlistItem.model_validate(item) for item in watchlist_items]
 
     def get_account_balance(
         self,
