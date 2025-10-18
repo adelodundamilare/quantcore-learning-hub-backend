@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app.core.constants import OrderTypeEnum
 from app.schemas.response import APIResponse
@@ -10,7 +10,9 @@ from app.schemas.user import UserContext
 from app.schemas.trading import (
     HistoricalDataPointSchema,
     HistoricalDataSchema,
+    StockDetailsSchema,
     StockQuoteSchema,
+    StockSchema,
     WatchlistItem,
     WatchlistItemCreate,
     AccountBalanceSchema,
@@ -24,6 +26,32 @@ from app.services.trading import trading_service
 
 def create_trading_router():
     router = APIRouter()
+
+    @router.get("/stocks", response_model=APIResponse[List[StockSchema]])
+    async def get_all_stocks(
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context),
+        search: Optional[str] = None,
+        active: Optional[bool] = True,
+        limit: int = 100,
+        offset: int = 0
+    ):
+        stocks = await polygon_service.get_all_stocks(search=search, active=active, limit=limit, offset=offset)
+        return APIResponse(message="Stocks retrieved successfully", data=stocks)
+
+    @router.get("/stocks/{ticker}/details_combined", response_model=APIResponse[StockDetailsSchema])
+    async def get_stock_details_combined(
+        ticker: str,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        combined_details = await polygon_service.get_stock_details_combined(ticker)
+        if not combined_details:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Details for {ticker} not found."
+            )
+        return APIResponse(message=f"Combined details for {ticker} retrieved successfully", data=combined_details)
 
     @router.get("/stocks/{ticker}/quote", response_model=APIResponse[StockQuoteSchema])
     async def get_stock_quote(

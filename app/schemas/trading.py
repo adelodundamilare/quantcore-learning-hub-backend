@@ -14,6 +14,21 @@ class StockQuoteSchema(BaseModel):
     volume: float
     timestamp: datetime
 
+class StockSchema(BaseModel):
+    symbol: str
+    name: str
+    market: Optional[str] = None
+    locale: Optional[str] = None
+    primary_exchange: Optional[str] = None
+    type: Optional[str] = None
+    active: Optional[bool] = None
+    currency_name: Optional[str] = None
+    cik: Optional[str] = None
+    composite_figi: Optional[str] = None
+    share_class_figi: Optional[str] = None
+    last_updated_utc: Optional[str] = None
+    delisted_utc: Optional[str] = None
+
 class CompanyDetailsSchema(BaseModel):
     symbol: str
     name: str
@@ -23,6 +38,25 @@ class CompanyDetailsSchema(BaseModel):
     headquarters: Optional[str] = None
     founded: Optional[str] = None
     market_cap: Optional[float] = None
+
+class StockDetailsSchema(BaseModel):
+    symbol: str
+    name: str
+    price: Optional[float] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    open: Optional[float] = None
+    volume: Optional[float] = None
+    avg_volume: Optional[float] = None
+    market_cap: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    description: Optional[str] = None
+    ceo: Optional[str] = None
+    employees: Optional[int] = None
+    headquarters: Optional[str] = None
+    founded: Optional[str] = None
 
 class WatchlistItemBase(BaseModel):
     symbol: str
