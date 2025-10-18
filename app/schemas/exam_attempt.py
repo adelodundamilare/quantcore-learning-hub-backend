@@ -4,6 +4,8 @@ from datetime import datetime
 
 from app.core.constants import ExamAttemptStatusEnum
 from app.schemas.user_answer import UserAnswer
+from app.schemas.exam import Exam
+from app.schemas.question import QuestionWithUserAnswer
 
 class ExamAttemptBase(BaseModel):
     user_id: int
@@ -34,3 +36,9 @@ class ExamAttempt(ExamAttemptBase):
     user_answers: List[UserAnswer] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class ExamAttemptDetails(BaseModel):
+    exam: Exam
+    questions: List[QuestionWithUserAnswer]
+
+Exam.model_rebuild()

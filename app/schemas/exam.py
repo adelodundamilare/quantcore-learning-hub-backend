@@ -1,11 +1,9 @@
-from wsgiref.validate import validator
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, field_validator
+from app.core.constants import CourseLevelEnum, StudentExamStatusEnum
+from typing import Optional
 from datetime import datetime
 from app.core.constants import CourseLevelEnum, StudentExamStatusEnum
 
-from app.schemas.question import Question
-from app.schemas.exam_attempt import ExamAttempt
 
 class ExamBase(BaseModel):
     title: str
@@ -54,7 +52,5 @@ class Exam(ExamBase):
     level: Optional[CourseLevelEnum] = None
     status: Optional[StudentExamStatusEnum] = None
     grade: Optional[float] = 0
-    questions: List[Question] = []
-    attempts: List[ExamAttempt] = []
 
     model_config = ConfigDict(from_attributes=True)

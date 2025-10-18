@@ -7,7 +7,7 @@ from app.schemas.response import APIResponse
 from app.utils import deps
 from app.schemas.exam import Exam, ExamCreate, ExamUpdate
 from app.schemas.question import Question, QuestionCreate, QuestionUpdate
-from app.schemas.exam_attempt import ExamAttempt
+from app.schemas.exam_attempt import ExamAttempt, ExamAttemptDetails
 from app.schemas.user_answer import UserAnswer, UserAnswerCreate
 from app.services.exam import exam_service
 from app.services.exam_attempt import exam_attempt_service
@@ -197,7 +197,7 @@ def submit_bulk_answers(
     return APIResponse(message="Answers submitted successfully", data=[UserAnswer.model_validate(ua) for ua in user_answers])
 
 
-@router.post("/attempts/{attempt_id}/submit", response_model=APIResponse[ExamAttempt])
+@router.post("/attempts/{attempt_id}/submit", response_model=APIResponse[ExamAttemptDetails])
 def submit_exam(
     *,
     db: Session = Depends(deps.get_transactional_db),
@@ -205,10 +205,10 @@ def submit_exam(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     completed_attempt = exam_attempt_service.submit_exam(db, attempt_id=attempt_id, current_user_context=context)
-    return APIResponse(message="Exam submitted successfully", data=ExamAttempt.model_validate(completed_attempt))
+    return APIResponse(message="Exam submitted successfully", data=completed_attempt)
 
 
-@router.get("/attempts/{attempt_id}", response_model=APIResponse[ExamAttempt])
+@router.get("/attempts/{attempt_id}", response_model=APIResponse[ExamAttemptDetails])
 def get_exam_attempt(
     *,
     db: Session = Depends(deps.get_db),
@@ -216,7 +216,7 @@ def get_exam_attempt(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     attempt = exam_attempt_service.get_exam_attempt(db, attempt_id=attempt_id, current_user_context=context)
-    return APIResponse(message="Exam attempt retrieved successfully", data=ExamAttempt.model_validate(attempt))
+    return APIResponse(message="Exam attempt retrieved successfully", data=attempt)
 
 
 @router.get("/users/{user_id}/attempts", response_model=APIResponse[List[ExamAttempt]])

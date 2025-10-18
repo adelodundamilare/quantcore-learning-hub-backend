@@ -29,10 +29,12 @@ class Question(QuestionBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime]
-    user_answers: List[UserAnswer] = []
 
     model_config = ConfigDict(from_attributes=True)
 
 class QuestionWithCorrectAnswer(Question):
     # This schema is for teachers/admins who need to see the correct answer
     pass
+
+class QuestionWithUserAnswer(Question):
+    user_answer: Optional[UserAnswer] = None

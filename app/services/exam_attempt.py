@@ -10,10 +10,11 @@ from app.crud.user_answer import user_answer as crud_user_answer
 from app.crud.course import course as crud_course
 from app.crud.curriculum import curriculum as crud_curriculum
 from app.schemas.exam import Exam
-from app.schemas.exam_attempt import ExamAttemptCreate, ExamAttemptUpdate, ExamAttempt
+from app.schemas.exam_attempt import ExamAttemptCreate, ExamAttemptDetails, ExamAttemptUpdate, ExamAttempt
+from app.schemas.question import QuestionWithUserAnswer
 from app.schemas.user_answer import UserAnswerCreate, UserAnswerUpdate, UserAnswer
 from app.schemas.user import UserContext
-from app.core.constants import QuestionTypeEnum, ExamAttemptStatusEnum
+from app.core.constants import ExamAttemptStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
 
 
@@ -112,14 +113,21 @@ class ExamAttemptService:
             user_answer = user_answers_map.get(question.id)
 
             if user_answer:
-                is_correct = False
-                if question.question_type in [QuestionTypeEnum.MULTIPLE_CHOICE, QuestionTypeEnum.TRUE_FALSE]:
-                    is_correct = user_answer.answer_text == question.correct_answer
+                try:
+                    user_answer_int = int(user_answer.answer_text)
+                    correct_answer_int = int(question.correct_answer)
+                    is_correct = user_answer_int == correct_answer_int
+                except (ValueError, TypeError):
+                    is_correct = False
+                    correct_answer_int = None
 
                 score = question.points if is_correct else 0.0
                 total_score += score
 
-                update_data = UserAnswerUpdate(is_correct=is_correct, correct_answer=question.correct_answer, score=score)
+                update_data = UserAnswerUpdate(
+                    is_correct=is_correct,
+                    score=score)
+
                 crud_user_answer.update(db, db_obj=user_answer, obj_in=update_data)
 
         final_score_percentage = (total_score / total_possible_points * 100) if total_possible_points > 0 else 0.0
@@ -234,7 +242,7 @@ class ExamAttemptService:
 
         return processed_answers
 
-    def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttempt:
+    def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:
         attempt = crud_exam_attempt.get(db, id=attempt_id)
         if not attempt:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
@@ -255,15 +263,38 @@ class ExamAttemptService:
         )
         updated_attempt = crud_exam_attempt.update(db, db_obj=attempt, obj_in=attempt_update)
 
-        return updated_attempt
+        questions = crud_question.get_by_exam(db, exam_id=exam.id)
+        user_answers = crud_user_answer.get_all_by_attempt(db, exam_attempt_id=updated_attempt.id)
+        user_answers_map = {ans.question_id: ans for ans in user_answers}
 
-    def get_exam_attempt(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttempt:
+        questions_with_answers = []
+        for question in questions:
+            user_answer = user_answers_map.get(question.id)
+            questions_with_answers.append(QuestionWithUserAnswer(user_answer=user_answer, **question.__dict__))
+
+        return ExamAttemptDetails(exam=exam, questions=questions_with_answers)
+
+    def get_exam_attempt(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:
         attempt = crud_exam_attempt.get(db, id=attempt_id)
         if not attempt:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
 
         self._require_attempt_view_permission(db, current_user_context, attempt)
-        return attempt
+
+        exam = crud_exam.get(db, id=attempt.exam_id)
+        if not exam:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found for this attempt.")
+
+        questions = crud_question.get_by_exam(db, exam_id=exam.id)
+        user_answers = crud_user_answer.get_all_by_attempt(db, exam_attempt_id=attempt.id)
+        user_answers_map = {ans.question_id: ans for ans in user_answers}
+
+        questions_with_answers = []
+        for question in questions:
+            user_answer = user_answers_map.get(question.id)
+            questions_with_answers.append(QuestionWithUserAnswer(user_answer=user_answer, **question.__dict__))
+
+        return ExamAttemptDetails(exam=exam, questions=questions_with_answers)
 
     def get_user_exam_attempts(self, db: Session, user_id: int, current_user_context: UserContext) -> List[ExamAttempt]:
         if user_id != current_user_context.user.id:

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, Any
+from typing import Optional
 from datetime import datetime
 
 class UserAnswerBase(BaseModel):
@@ -17,15 +17,13 @@ class UserAnswerCreate(UserAnswerBase):
 class UserAnswerUpdate(UserAnswerBase):
     exam_attempt_id: Optional[int] = None
     question_id: Optional[int] = None
-    correct_answer: Optional[int] = None
     answer_text: Optional[int] = None
     is_correct: Optional[bool] = None
     score: Optional[float] = None
+
 
 class UserAnswer(UserAnswerBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime]
-    correct_answer: Optional[int] = None
-
     model_config = ConfigDict(from_attributes=True)
