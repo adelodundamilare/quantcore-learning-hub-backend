@@ -103,6 +103,7 @@ class TradingService:
         result_watchlists = []
 
         for wl in watchlists:
+            stocks_with_sparkline = []
             symbols = [stock.symbol for stock in wl.stocks]
 
             sparkline_tasks = [
@@ -111,7 +112,6 @@ class TradingService:
             ]
             sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
 
-            stocks_with_sparkline = []
             for stock_item, sparkline_data in zip(wl.stocks, sparkline_results):
                 if isinstance(sparkline_data, Exception):
                     logger.error(f"Error fetching sparkline for {stock_item.symbol}: {sparkline_data}")
@@ -119,15 +119,13 @@ class TradingService:
 
                 stocks_with_sparkline.append(
                     WatchlistStockSchema.model_validate(
-                        stock_item,
-                        update={"sparkline_data": sparkline_data}
+                        stock_item.__dict__ | {"sparkline_data": sparkline_data}
                     )
                 )
 
             result_watchlists.append(
                 UserWatchlistSchema.model_validate(
-                    wl,
-                    update={"stocks": stocks_with_sparkline}
+                    wl.__dict__ | {"stocks": stocks_with_sparkline}
                 )
             )
 
@@ -147,6 +145,7 @@ class TradingService:
                 detail="Watchlist not found"
             )
 
+        stocks_with_sparkline = []
         symbols = [stock.symbol for stock in watchlist.stocks]
         sparkline_tasks = [
             polygon_service._get_sparkline_data(symbol)
@@ -154,7 +153,6 @@ class TradingService:
         ]
         sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
 
-        stocks_with_sparkline = []
         for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
             if isinstance(sparkline_data, Exception):
                 logger.error(f"Error fetching sparkline for {stock_item.symbol}: {sparkline_data}")
@@ -168,8 +166,7 @@ class TradingService:
             )
 
         return UserWatchlistSchema.model_validate(
-            watchlist,
-            update={"stocks": stocks_with_sparkline}
+            watchlist.__dict__ | {"stocks": stocks_with_sparkline}
         )
 
     async def update_user_watchlist(
@@ -263,6 +260,7 @@ class TradingService:
         )
         db.refresh(watchlist)
 
+        stocks_with_sparkline = []
         symbols = [stock.symbol for stock in watchlist.stocks]
         sparkline_tasks = [
             polygon_service._get_sparkline_data(sym)
@@ -270,21 +268,18 @@ class TradingService:
         ]
         sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
 
-        stocks_with_sparkline = []
         for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
             if isinstance(sparkline_data, Exception):
                 sparkline_data = []
 
             stocks_with_sparkline.append(
                 WatchlistStockSchema.model_validate(
-                    stock_item,
-                    update={"sparkline_data": sparkline_data}
+                    stock_item.__dict__ | {"sparkline_data": sparkline_data}
                 )
             )
 
         return UserWatchlistSchema.model_validate(
-            watchlist,
-            update={"stocks": stocks_with_sparkline}
+            watchlist.__dict__ | {"stocks": stocks_with_sparkline}
         )
 
     async def remove_stock_from_watchlist(
@@ -314,6 +309,7 @@ class TradingService:
         crud_watchlist_stock.remove(db, id=stock.id)
         db.refresh(watchlist)
 
+        stocks_with_sparkline = []
         symbols = [s.symbol for s in watchlist.stocks]
         sparkline_tasks = [
             polygon_service._get_sparkline_data(sym)
@@ -321,21 +317,18 @@ class TradingService:
         ]
         sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
 
-        stocks_with_sparkline = []
         for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
             if isinstance(sparkline_data, Exception):
                 sparkline_data = []
 
             stocks_with_sparkline.append(
                 WatchlistStockSchema.model_validate(
-                    stock_item,
-                    update={"sparkline_data": sparkline_data}
+                    stock_item.__dict__ | {"sparkline_data": sparkline_data}
                 )
             )
 
         return UserWatchlistSchema.model_validate(
-            watchlist,
-            update={"stocks": stocks_with_sparkline}
+            watchlist.__dict__ | {"stocks": stocks_with_sparkline}
         )
 
     # ============ ACCOUNT BALANCE METHODS ============
