@@ -87,6 +87,12 @@ class AccountBalanceSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class AccountBalanceCreate(BaseModel):
+    pass
+
+class AccountBalanceUpdate(BaseModel):
+    pass
+
 class PortfolioPositionSchema(BaseModel):
     id: int
     user_id: int
@@ -98,6 +104,12 @@ class PortfolioPositionSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class PortfolioPositionCreate(BaseModel):
+    pass
+
+class PortfolioPositionUpdate(BaseModel):
+    pass
+
 class TradeOrderBase(BaseModel):
     symbol: str
     order_type: OrderTypeEnum
@@ -105,6 +117,9 @@ class TradeOrderBase(BaseModel):
     price: float
 
 class TradeOrderCreate(TradeOrderBase):
+    pass
+
+class TradeOrderUpdate(TradeOrderBase):
     pass
 
 class TradeOrder(TradeOrderBase):
