@@ -158,7 +158,7 @@ class OrderPreviewRequest(BaseModel):
     symbol: str
     order_type: OrderTypeEnum
     quantity: Optional[int] = None
-    amount: Optional[float] = None # For selling in dollars
+    amount: Optional[float] = None
     sell_in_dollars: bool = False
 
 class OrderPreview(BaseModel):

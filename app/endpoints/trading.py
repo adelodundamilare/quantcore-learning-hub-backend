@@ -239,10 +239,6 @@ def create_trading_router():
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
     ):
-        """
-        Preview an order before placing it
-        Returns estimated cost/credit and current market price
-        """
         return await trading_service.preview_order(db, context.user.id, order_preview)
 
     @router.get("/trade/history", response_model=APIResponse[List[TradeOrder]])

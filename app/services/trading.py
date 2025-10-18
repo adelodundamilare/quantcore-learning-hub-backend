@@ -396,9 +396,6 @@ class TradingService:
         user_id: int,
         order_preview: OrderPreviewRequest
     ) -> OrderPreview:
-        """
-        Calculate estimated cost/credit without executing the order
-        """
         quote = await polygon_service.get_latest_quote(order_preview.symbol)
 
         if not quote or not quote.get('p'):
@@ -409,7 +406,6 @@ class TradingService:
 
         current_price = float(quote['p'])
 
-        # If selling in dollars, calculate quantity needed
         if order_preview.sell_in_dollars and order_preview.order_type == OrderTypeEnum.SELL:
             quantity = order_preview.amount / current_price
         else:
@@ -463,8 +459,7 @@ class TradingService:
         ]
         relevant_orders.sort(key=lambda x: x.executed_at)
 
-        # Initialize portfolio holdings at the start of the period
-        current_holdings = defaultdict(float) # symbol -> quantity
+        current_holdings = defaultdict(float)
 
         # Get initial portfolio state before from_date
         initial_orders = [
@@ -497,8 +492,6 @@ class TradingService:
 
             total_value_for_day = 0.0
             if current_holdings:
-                # Fetch closing prices for all held stocks for the current day
-                # This can be optimized by fetching in parallel
                 prices = {}
                 for symbol in current_holdings.keys():
                     historical_stock_data = await polygon_service.get_historical_data(
@@ -509,7 +502,6 @@ class TradingService:
                         timespan="day"
                     )
                     if historical_stock_data and historical_stock_data["results"]:
-                        # Use the close price for the day
                         prices[symbol] = historical_stock_data["results"][0]["close"]
                     else:
                         # If no data for the day, try to get the latest available price
@@ -517,7 +509,7 @@ class TradingService:
                         if latest_quote:
                             prices[symbol] = latest_quote["price"]
                         else:
-                            prices[symbol] = 0.0 # Or handle as an error/warning
+                            prices[symbol] = 0.0
 
                 for symbol, quantity in current_holdings.items():
                     total_value_for_day += quantity * prices.get(symbol, 0.0)
