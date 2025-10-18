@@ -691,7 +691,6 @@ class TradingService:
             return []
 
         earliest_trade_date = min(trade.executed_at.date() for trade in all_trades)
-        latest_trade_date = max(trade.executed_at.date() for trade in all_trades)
 
         start_date = from_date.date() if from_date else earliest_trade_date
         end_date = to_date.date() if to_date else datetime.utcnow().date()
@@ -720,24 +719,29 @@ class TradingService:
         ]
         relevant_trades.sort(key=lambda x: x.executed_at)
 
+        trades_by_date = defaultdict(list)
+        for trade in relevant_trades:
+            trades_by_date[trade.executed_at.date()].append(trade)
+
         historical_data = []
         current_date = start_date
 
         while current_date <= end_date:
-            for trade in relevant_trades:
-                if trade.executed_at.date() == current_date:
-                    qty = Decimal(str(trade.quantity))
-                    if trade.order_type == OrderTypeEnum.BUY:
-                        current_holdings[trade.symbol] += qty
-                    elif trade.order_type == OrderTypeEnum.SELL:
-                        current_holdings[trade.symbol] -= qty
+            for trade in trades_by_date.get(current_date, []):
+                qty = Decimal(str(trade.quantity))
 
-            current_holdings = {s: q for s, q in current_holdings.items() if q > 0}
+                if trade.order_type == OrderTypeEnum.BUY:
+                    current_holdings[trade.symbol] = current_holdings.get(trade.symbol, Decimal('0')) + qty
+                elif trade.order_type == OrderTypeEnum.SELL:
+                    current_holdings[trade.symbol] = current_holdings.get(trade.symbol, Decimal('0')) - qty
+                    if current_holdings[trade.symbol] <= 0:
+                        current_holdings.pop(trade.symbol, None)
 
             total_value = Decimal('0.00')
 
             if current_holdings:
                 symbols = list(current_holdings.keys())
+
                 price_tasks = [
                     self._get_historical_price(symbol, current_date)
                     for symbol in symbols
@@ -746,10 +750,12 @@ class TradingService:
 
                 for symbol, price in zip(symbols, prices):
                     if isinstance(price, Exception):
-                        logger.error(f"Error fetching price for {symbol}: {price}")
+                        logger.error(f"Error fetching price for {symbol} on {current_date}: {price}")
                         price = Decimal('0.00')
+                    else:
+                        price = Decimal(str(price))
 
-                    total_value += current_holdings[symbol] * Decimal(str(price))
+                    total_value += current_holdings[symbol] * price
 
             historical_data.append(
                 PortfolioHistoricalDataPointSchema(
