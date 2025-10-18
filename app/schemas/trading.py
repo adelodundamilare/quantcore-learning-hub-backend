@@ -145,6 +145,7 @@ class TradeOrder(TradeOrderBase):
     user_id: int
     status: OrderStatusEnum
     executed_price: Optional[float] = None
+    total_amount: Optional[float] = None
     executed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

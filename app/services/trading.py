@@ -409,7 +409,7 @@ class TradingService:
                 obj_in={"user_id": student_id, "balance": amount}
             )
         else:
-            new_balance = account.balance + amount
+            new_balance = Decimal(str(account.balance)) + amount
             account = crud_account_balance.update(
                 db,
                 db_obj=account,
@@ -474,13 +474,13 @@ class TradingService:
             )
 
         quote = await polygon_service.get_latest_quote(order_in.symbol.upper())
-        if not quote or not quote.get('p'):
+        if not quote or not quote.get('price'):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Could not get price for {order_in.symbol}"
             )
 
-        current_price = Decimal(str(quote['p']))
+        current_price = Decimal(str(quote['price']))
         if current_price <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -534,14 +534,14 @@ class TradingService:
         executed_price: Decimal,
         total_amount: Decimal
     ):
-        if account.balance < total_amount:
+        if Decimal(str(account.balance)) < total_amount:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Insufficient funds. Required: ${total_amount:.2f}, "
                        f"Available: ${account.balance:.2f}"
             )
 
-        new_balance = account.balance - total_amount
+        new_balance = Decimal(str(account.balance)) - total_amount
         crud_account_balance.update(
             db,
             db_obj=account,
@@ -610,7 +610,7 @@ class TradingService:
                        f"trying to sell {order_in.quantity}"
             )
 
-        new_balance = account.balance + total_amount
+        new_balance = Decimal(str(account.balance)) + total_amount
         crud_account_balance.update(
             db,
             db_obj=account,
@@ -636,13 +636,13 @@ class TradingService:
     ) -> OrderPreview:
         quote = await polygon_service.get_latest_quote(order_preview.symbol.upper())
 
-        if not quote or not quote.get('p'):
+        if not quote or not quote.get('price'):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Could not get price for {order_preview.symbol}"
             )
 
-        current_price = Decimal(str(quote['p']))
+        current_price = Decimal(str(quote['price']))
 
         if order_preview.sell_in_dollars and order_preview.order_type == OrderTypeEnum.SELL:
             quantity = (Decimal(str(order_preview.amount)) / current_price).quantize(

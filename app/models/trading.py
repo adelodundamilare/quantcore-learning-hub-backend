@@ -62,6 +62,7 @@ class TradeOrder(Base):
     price = Column(Float, nullable=False)
     status = Column(Enum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.PENDING)
     executed_price = Column(Float, nullable=True)
+    total_amount = Column(Float, nullable=False)
     executed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
