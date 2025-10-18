@@ -26,7 +26,7 @@ from app.models.user_answer import UserAnswer
 from app.models.question import Question
 from app.models.exam import Exam
 from app.models.course_reward import CourseReward
-from app.models.trading import WatchlistItem, AccountBalance, PortfolioPosition, TradeOrder
+from app.models.trading import AccountBalance, PortfolioPosition, TradeOrder
 
 
 # Alembic Config object, which provides access to the .ini file values

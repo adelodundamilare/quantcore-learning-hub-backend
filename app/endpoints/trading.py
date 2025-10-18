@@ -128,13 +128,13 @@ def create_trading_router():
         )
 
     @router.get("/portfolio", response_model=APIResponse[List[PortfolioPositionSchema]])
-    def get_portfolio(
+    async def get_portfolio(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
         skip: int = 0,
         limit: int = 100
     ):
-        portfolio = trading_service.get_portfolio(
+        portfolio = await trading_service.get_portfolio(
             db,
             user_id=context.user.id,
             skip=skip,
