@@ -7,6 +7,8 @@ from decimal import Decimal
 from functools import wraps
 from collections import defaultdict
 import logging
+from app.crud.user import user as user_crud
+from app.crud.role import role as user_role
 
 from app.schemas.trading import (
     WatchlistItemCreate,
@@ -22,8 +24,11 @@ from app.crud.trading import (
     portfolio_position as crud_portfolio_position,
     trade_order as crud_trade_order
 )
+from app.crud.transaction import transaction as crud_transaction
+from app.schemas.user import UserContext
 from app.services.polygon import polygon_service
-from app.core.constants import OrderTypeEnum, OrderStatusEnum
+from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
+from app.utils.permission import PermissionHelper as permission_helper
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +133,166 @@ class TradingService:
                 db,
                 obj_in={
                     "user_id": user_id,
-                    "balance": 10000.00,
-                    "initial_balance": 10000.00
+                    "balance": 0.00
                 }
             )
+
+        return AccountBalanceSchema.model_validate(account)
+
+    def add_stock_to_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        watchlist_item_in: WatchlistItemCreate
+    ) -> WatchlistItem:
+        existing_item = crud_watchlist_item.get_by_user_and_symbol(
+            db,
+            user_id=user_id,
+            symbol=watchlist_item_in.symbol
+        )
+
+        if existing_item:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stock already in watchlist."
+            )
+
+        new_item_data = watchlist_item_in.model_dump()
+        new_item_data["user_id"] = user_id
+
+        return crud_watchlist_item.create(db, obj_in=new_item_data)
+
+    def remove_stock_from_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        symbol: str
+    ) -> WatchlistItem:
+        existing_item = crud_watchlist_item.get_by_user_and_symbol(
+            db,
+            user_id=user_id,
+            symbol=symbol
+        )
+
+        if not existing_item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stock not found in watchlist."
+            )
+
+        crud_watchlist_item.delete(db, id=existing_item.id)
+        return existing_item
+
+    async def get_user_watchlist(
+        self,
+        db: Session,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[WatchlistItem]:
+        watchlist_items = crud_watchlist_item.get_multi_by_user(
+            db,
+            user_id=user_id,
+            skip=skip,
+            limit=limit
+        )
+
+        for item in watchlist_items:
+            item.sparkline_data = await polygon_service._get_sparkline_data(item.symbol)
+
+        return [WatchlistItem.model_validate(item) for item in watchlist_items]
+
+    def get_account_balance(
+        self,
+        db: Session,
+        user_id: int
+    ) -> AccountBalanceSchema:
+        account = crud_account_balance.get_by_user_id(db, user_id=user_id)
+
+        if not account:
+            account = crud_account_balance.create(
+                db,
+                obj_in={
+                    "user_id": user_id,
+                    "balance": 0.00
+                }
+            )
+
+        return AccountBalanceSchema.model_validate(account)
+
+    async def add_funds_to_student_account(
+        self,
+        db: Session,
+        student_id: int,
+        amount: float,
+        current_user_context: UserContext
+    ) -> AccountBalanceSchema:
+        if permission_helper.is_student(current_user_context):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Students cannot add funds to other accounts."
+            )
+
+        if not (permission_helper.is_super_admin(current_user_context) or
+                permission_helper.is_school_admin(current_user_context) or
+                permission_helper.is_teacher(current_user_context)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to add funds to student accounts."
+            )
+
+        student_user = user_crud.get(db, id=student_id)
+        if not student_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+
+        student_role = user_role.get_by_name(db, name=RoleEnum.STUDENT)
+        if not student_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+
+        student_association = user_crud.get_association_by_user_school_role(
+            db, user_id=student_id, school_id=current_user_context.school.id, role_id=student_role.id
+        )
+        if not student_association:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Target user is not a student in your school."
+            )
+
+        if amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Amount must be positive."
+            )
+
+        account = crud_account_balance.get_by_user_id(db, user_id=student_id)
+
+        if not account:
+            account = crud_account_balance.create(
+                db,
+                obj_in={
+                    "user_id": student_id,
+                    "balance": amount
+                }
+            )
+        else:
+            updated_balance = account.balance + amount
+            account = crud_account_balance.update(
+                db,
+                db_obj=account,
+                obj_in={"balance": updated_balance}
+            )
+
+        logger.info(f"User {current_user_context.user.id} added {amount} to student {student_id}'s account. New balance: {account.balance}")
+
+        crud_transaction.create(
+            db,
+            obj_in={
+                "user_id": student_id,
+                "initiator_id": current_user_context.user.id,
+                "amount": amount,
+                "transaction_type": "fund_addition"
+            }
+        )
 
         return AccountBalanceSchema.model_validate(account)
 
@@ -165,8 +326,7 @@ class TradingService:
                     db,
                     obj_in={
                         "user_id": user_id,
-                        "balance": 10000.00,
-                        "initial_balance": 10000.00
+                        "balance": 0.00
                     }
                 )
 

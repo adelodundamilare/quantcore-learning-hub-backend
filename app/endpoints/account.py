@@ -10,17 +10,35 @@ from app.utils.logger import setup_logger
 from app.models.user import User
 from app.services.email import EmailService
 
-from app.schemas.user import User, UserUpdate, UserInvite, User
+from app.schemas.user import User, UserUpdate, UserInvite
 from typing import List
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
 from app.services.auth import auth_service
 from app.schemas.response import APIResponse
 from app.core.constants import RoleEnum
+from app.schemas.trading import AccountBalanceSchema
+from app.services.trading import trading_service
 
 logger = setup_logger("account_api", "account.log")
 
 router = APIRouter()
+
+@router.post("/students/{student_id}/add-funds", response_model=APIResponse[AccountBalanceSchema])
+async def add_funds_to_student_account(
+    student_id: int,
+    amount: float,
+    db: Session = Depends(deps.get_transactional_db),
+    context: deps.UserContext = Depends(deps.get_current_user_with_context),
+):
+    """Add funds to a student's account."""
+    updated_balance = await trading_service.add_funds_to_student_account(
+        db,
+        student_id=student_id,
+        amount=amount,
+        current_user_context=context
+    )
+    return APIResponse(message="Funds added successfully", data=updated_balance)
 
 @router.get("/me", response_model=APIResponse[User])
 def read_users_me(current_user: User = Depends(deps.get_current_user)):
