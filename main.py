@@ -2,12 +2,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading
+from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks
 from app.realtime import websockets as websocket_events
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
-import socketio # type: ignore
+import socketio
 import asyncio
+
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=settings.ALLOWED_ORIGINS)
 
@@ -21,7 +22,7 @@ app.mount("/socket.io", socketio.ASGIApp(sio))
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,  # Add your frontend URLs
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -45,8 +46,10 @@ app.include_router(permission.router, prefix="/permissions", tags=["Permissions"
 app.include_router(notification.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(utility.router, prefix="/utility", tags=["utility"])
 
+app.include_router(billing.router, prefix="/billing", tags=["Billing"])
 trading_router = trading.create_trading_router()
 app.include_router(trading_router, prefix="/trading", tags=["Trading"])
+app.include_router(webhooks.router, tags=["Webhooks"])
 
 @app.on_event("startup")
 async def startup_event():

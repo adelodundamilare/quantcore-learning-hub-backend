@@ -59,6 +59,18 @@ def require_permission(permission_name: PermissionEnum):
             )
     return _verify_permission
 
+def require_role(role_name: RoleEnum):
+    def _verify_role(context: UserContext = Depends(get_current_user_with_context)):
+        if not context.role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User has no assigned role.")
+
+        if context.role.name != role_name:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You do not have the required role: {role_name.value}."
+            )
+    return _verify_role
+
 async def get_current_user(
     db: Session = Depends(get_db),
     credentials: HTTPAuthorizationCredentials = Depends(http_bearer)

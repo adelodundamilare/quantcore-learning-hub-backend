@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str
 
     POLYGON_API_KEY: str
+    STRIPE_SECRET_KEY: str
+    STRIPE_WEBHOOK_SECRET: str
 
     # OAuth2
     GOOGLE_CLIENT_ID: Optional[str] = None
