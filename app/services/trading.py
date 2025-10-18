@@ -139,87 +139,6 @@ class TradingService:
 
         return AccountBalanceSchema.model_validate(account)
 
-    def add_stock_to_watchlist(
-        self,
-        db: Session,
-        user_id: int,
-        watchlist_item_in: WatchlistItemCreate
-    ) -> WatchlistItem:
-        existing_item = crud_watchlist_item.get_by_user_and_symbol(
-            db,
-            user_id=user_id,
-            symbol=watchlist_item_in.symbol
-        )
-
-        if existing_item:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Stock already in watchlist."
-            )
-
-        new_item_data = watchlist_item_in.model_dump()
-        new_item_data["user_id"] = user_id
-
-        return crud_watchlist_item.create(db, obj_in=new_item_data)
-
-    def remove_stock_from_watchlist(
-        self,
-        db: Session,
-        user_id: int,
-        symbol: str
-    ) -> WatchlistItem:
-        existing_item = crud_watchlist_item.get_by_user_and_symbol(
-            db,
-            user_id=user_id,
-            symbol=symbol
-        )
-
-        if not existing_item:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Stock not found in watchlist."
-            )
-
-        crud_watchlist_item.delete(db, id=existing_item.id)
-        return existing_item
-
-    async def get_user_watchlist(
-        self,
-        db: Session,
-        user_id: int,
-        skip: int = 0,
-        limit: int = 100
-    ) -> List[WatchlistItem]:
-        watchlist_items = crud_watchlist_item.get_multi_by_user(
-            db,
-            user_id=user_id,
-            skip=skip,
-            limit=limit
-        )
-
-        for item in watchlist_items:
-            item.sparkline_data = await polygon_service._get_sparkline_data(item.symbol)
-
-        return [WatchlistItem.model_validate(item) for item in watchlist_items]
-
-    def get_account_balance(
-        self,
-        db: Session,
-        user_id: int
-    ) -> AccountBalanceSchema:
-        account = crud_account_balance.get_by_user_id(db, user_id=user_id)
-
-        if not account:
-            account = crud_account_balance.create(
-                db,
-                obj_in={
-                    "user_id": user_id,
-                    "balance": 0.00
-                }
-            )
-
-        return AccountBalanceSchema.model_validate(account)
-
     async def add_funds_to_student_account(
         self,
         db: Session,
@@ -312,6 +231,7 @@ class TradingService:
 
         return [PortfolioPositionSchema.model_validate(p) for p in portfolio]
 
+    @rate_limit_orders(max_orders=10, window_minutes=1)
     async def place_order(
         self,
         db: Session,
@@ -428,7 +348,7 @@ class TradingService:
                 new_quantity = position.quantity - order_in.quantity
 
                 if new_quantity == 0:
-                    crud_portfolio_position.remove(db, id=position.id)
+                    crud_portfolio_position.delete(db, id=position.id)
                 else:
                     crud_portfolio_position.update(
                         db,
