@@ -94,7 +94,7 @@ class TradingService:
                 detail="Stock not found in watchlist."
             )
 
-        crud_watchlist_item.remove(db, id=existing_item.id)
+        crud_watchlist_item.delete(db, id=existing_item.id)
         return existing_item
 
     async def get_user_watchlist(
