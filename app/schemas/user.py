@@ -4,6 +4,7 @@ from typing import Optional, Any, List
 from .school import School
 from .role import Role
 from app.core.constants import RoleEnum, CourseLevelEnum
+from app.schemas.trading import TradingAccountSummary
 
 class UserBase(BaseModel):
     """Base user schema with common fields."""
@@ -52,7 +53,7 @@ class User(UserBase):
 class StudentProfile(User):
     """Schema for a student's profile, including lesson count and trading balance."""
     assigned_lessons_count: int
-    trading_fund_balance: float
+    trading_fund_balance: TradingAccountSummary
 
 class UserContext(BaseModel):
     """Represents a user's role within a specific school."""

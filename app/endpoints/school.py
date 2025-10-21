@@ -113,13 +113,13 @@ def get_school_user_profile(
     return APIResponse(message="User profile retrieved successfully", data=UserSchema.model_validate(user_profile))
 
 @router.get("/{school_id}/students/{student_id}", response_model=APIResponse[StudentProfile])
-def get_school_student_profile(
+async def get_school_student_profile(
     school_id: int,
     student_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    student_profile = user_service.get_student_profile_for_school(
+    student_profile = await user_service.get_student_profile_for_school(
         db, school_id=school_id, student_id=student_id, current_user_context=context
     )
     return APIResponse(message="Student profile retrieved successfully", data=student_profile)

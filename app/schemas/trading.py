@@ -105,6 +105,12 @@ class AccountBalanceSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class TradingAccountSummary(BaseModel):
+    starting_capital: float
+    current_balance: float
+    trading_profit: float
+    trading_loss: float
+
 class AccountBalanceCreate(BaseModel):
     pass
 

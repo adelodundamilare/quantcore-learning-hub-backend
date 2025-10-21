@@ -256,7 +256,7 @@ class UserService:
 
         return user
 
-    def get_student_profile_for_school(self, db: Session, school_id: int, student_id: int, current_user_context: UserContext) -> StudentProfile:
+    async def get_student_profile_for_school(self, db: Session, school_id: int, student_id: int, current_user_context: UserContext) -> StudentProfile:
         user = self.get_user_profile_for_school(db, school_id, student_id, current_user_context)
 
         if not permission_helper.is_student(current_user_context):
@@ -278,13 +278,12 @@ class UserService:
                 for curriculum in curriculums:
                     assigned_lessons_count += len(curriculum.lessons)
 
-        account_balance = trading_service.get_account_balance(db, user_id=student_id)
-        trading_fund_balance = float(account_balance.balance)
+        trading_summary = await trading_service.get_trading_account_summary(db, user_id=student_id)
 
         pydantic_user = UserSchema.model_validate(user)
         user_data = pydantic_user.model_dump()
         user_data["assigned_lessons_count"] = assigned_lessons_count
-        user_data["trading_fund_balance"] = trading_fund_balance
+        user_data["trading_fund_balance"] = trading_summary
 
         return StudentProfile.model_validate(user_data)
 

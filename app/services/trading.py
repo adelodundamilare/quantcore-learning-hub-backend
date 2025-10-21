@@ -12,6 +12,7 @@ import asyncio
 from app.crud.user import user as user_crud
 from app.crud.role import role as user_role
 from app.schemas.trading import (
+    TradingAccountSummary,
     WatchlistStockSchema,
     UserWatchlistCreate,
     UserWatchlistUpdate,
@@ -797,5 +798,53 @@ class TradingService:
             logger.error(f"Error fetching historical price for {symbol}: {e}")
             return 0.0
 
+    async def get_trading_account_summary(
+        self,
+        db: Session,
+        user_id: int
+    ) -> TradingAccountSummary:
+        fund_additions = crud_transaction.get_multi_by_user_and_type(
+            db, user_id=user_id, transaction_type="fund_addition"
+        )
+
+        starting_capital = Decimal("0.00")
+        total_funds_added = Decimal("0.00")
+        if fund_additions:
+            fund_additions.sort(key=lambda t: t.created_at)
+            starting_capital = Decimal(str(fund_additions[0].amount))
+            total_funds_added = sum(Decimal(str(t.amount)) for t in fund_additions[1:])
+
+        account_balance = self.get_account_balance(db, user_id=user_id)
+        current_cash_balance = Decimal(str(account_balance.balance))
+
+        positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)
+        total_stock_value = Decimal("0.00")
+
+        if positions:
+            symbols = [p.symbol for p in positions]
+            price_tasks = [polygon_service.get_latest_quote(s) for s in symbols]
+            price_results = await asyncio.gather(*price_tasks, return_exceptions=True)
+
+            for pos, quote_result in zip(positions, price_results):
+                if isinstance(quote_result, Exception) or not quote_result or not quote_result.get('price'):
+                    logger.error(f"Could not fetch price for {pos.symbol}. Using average cost.")
+                    price = Decimal(str(pos.average_price))
+                else:
+                    price = Decimal(str(quote_result['price']))
+
+                total_stock_value += Decimal(str(pos.quantity)) * price
+
+        total_portfolio_value = current_cash_balance + total_stock_value
+        total_invested = starting_capital + total_funds_added
+        net_pl = total_portfolio_value - total_invested
+        trading_profit = max(Decimal("0.00"), net_pl)
+        trading_loss = abs(min(Decimal("0.00"), net_pl))
+
+        return TradingAccountSummary(
+            starting_capital=float(starting_capital),
+            current_balance=float(current_cash_balance),
+            trading_profit=float(trading_profit),
+            trading_loss=float(trading_loss)
+        )
 
 trading_service = TradingService()
