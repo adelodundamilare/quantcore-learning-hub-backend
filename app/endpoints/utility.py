@@ -18,15 +18,20 @@ user_service = UserService()
 cloudinary_service = CloudinaryService()
 
 @router.post("/upload-to-cloud")
-async def upload_image(
+async def upload_file_to_cloud(
     file: UploadFile = File(...)
 ):
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image.")
+    if not (file.content_type.startswith("image/") or file.content_type == "application/pdf"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image or a PDF.")
     try:
         file_bytes = await file.read()
-        res = cloudinary_service.upload_image(file_bytes)
-        return {"message": "Image uploaded successfully", "url": res}
+        if file.content_type.startswith("image/"):
+            res = cloudinary_service.upload_image(file_bytes)
+        elif file.content_type == "application/pdf":
+            res = cloudinary_service.upload_pdf(file_bytes)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type.")
+        return {"message": "File uploaded successfully", "url": res}
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise

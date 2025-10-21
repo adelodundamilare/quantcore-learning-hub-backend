@@ -18,3 +18,7 @@ class CloudinaryService:
         result = cloudinary.uploader.upload(file, resource_type="video")
         return result["secure_url"]
 
+    def upload_pdf(self, file: bytes):
+        result = cloudinary.uploader.upload(file, resource_type="raw", format="pdf")
+        return result["secure_url"]
+
