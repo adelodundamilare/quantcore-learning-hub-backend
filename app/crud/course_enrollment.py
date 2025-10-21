@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from app.crud.base import CRUDBase
 from app.models.course_enrollment import CourseEnrollment
+from app.models.course import Course
+from app.models.curriculum import Curriculum
 from app.schemas.course_enrollment import CourseEnrollmentCreate, CourseEnrollmentUpdate
 
 class CRUDCourseEnrollment(CRUDBase[CourseEnrollment, CourseEnrollmentCreate, CourseEnrollmentUpdate]):
@@ -10,7 +12,7 @@ class CRUDCourseEnrollment(CRUDBase[CourseEnrollment, CourseEnrollmentCreate, Co
     def _query_with_relationships(self, db: Session):
         return db.query(CourseEnrollment).options(
             selectinload(CourseEnrollment.user),
-            selectinload(CourseEnrollment.course),
+            selectinload(CourseEnrollment.course).selectinload(Course.curriculums).selectinload(Curriculum.lessons),
             selectinload(CourseEnrollment.lesson_progress)
         )
 

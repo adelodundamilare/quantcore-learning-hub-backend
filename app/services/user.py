@@ -8,7 +8,9 @@ from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
-from app.schemas.user import  TeacherUpdate, UserContext, UserInvite
+from app.crud.course_enrollment import course_enrollment as crud_course_enrollment
+from app.crud.curriculum import curriculum as crud_curriculum
+from app.schemas.user import TeacherUpdate, UserContext, UserInvite, User as UserSchema, StudentProfile
 from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash, verify_password
@@ -16,6 +18,7 @@ from app.services.email import EmailService
 from app.utils.permission import PermissionHelper as permission_helper
 from app.services.notification import notification_service
 from app.services.course import course_service
+from app.services.trading import trading_service # Import trading_service
 
 class UserService:
 
@@ -29,17 +32,16 @@ class UserService:
         db.commit()
         db.refresh(user)
 
-        # Optionally, send a notification email
         EmailService.send_email(
             to_email=user.email,
             subject="Your Password Has Been Changed",
-            template_name="reset-password-success.html",  # You might need to create this template
+            template_name="reset-password-success.html",
             template_context={'user_name': user.full_name}
         )
 
         return user
 
-    def get_students_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+    def get_students_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
         student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
@@ -48,7 +50,7 @@ class UserService:
 
         return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=student_role.id, skip=skip, limit=limit)
 
-    def get_teachers_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+    def get_teachers_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
         teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
@@ -57,14 +59,14 @@ class UserService:
 
         return crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=teacher_role.id, skip=skip, limit=limit)
 
-    def get_teams_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+    def get_teams_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
         return crud_user.get_non_student_users_by_school(db, school_id=school_id, skip=skip, limit=limit)
 
     def invite_user(
         self, db: Session, *, school: School, invite_in: UserInvite, current_user_context: UserContext
-    ) -> User:
+    ) -> UserSchema:
         """Invites a user to a school as a teacher or student."""
         role_to_assign = crud_role.get_by_name(db, name=invite_in.role_name)
         if not role_to_assign:
@@ -163,7 +165,7 @@ class UserService:
 
     def admin_invite_user(
         self, db: Session, *, invite_in: UserInvite
-    ) -> User:
+    ) -> UserSchema:
         """Admin invites a user to a school as a school admin."""
         existing_user = crud_user.get_by_email(db, email=invite_in.email)
 
@@ -213,11 +215,11 @@ class UserService:
             user_id=new_user.id,
             message=f"You have been invited to {new_school.name} as a school admin.",
             notification_type="school_invitation",
-            link=f"/schools/{new_school.id}" # Example link
+            link=f"/schools/{new_school.id}"
         )
         return new_user
 
-    def update_teacher_details(self, db: Session, school_id: int, teacher_id: int, update_data: TeacherUpdate, current_user_context: UserContext):
+    def update_teacher_details(self, db: Session, school_id: int, teacher_id: int, update_data: TeacherUpdate, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
         teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
@@ -235,15 +237,14 @@ class UserService:
         updated_teacher = crud_user.get(db, id=teacher_id)
         return updated_teacher
 
-    def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[User]:
+    def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         if not permission_helper.is_super_admin(current_user_context):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this resource.")
 
         role_names = [role.value for role in roles]
         return crud_user.get_users_by_role_names(db, role_names=role_names, skip=skip, limit=limit)
 
-    def get_user_profile_for_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> User:
-        # permission_helper.require_not_student(current_user_context)
+    def get_user_profile_for_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
         user = crud_user.get(db, id=user_id)
@@ -254,5 +255,54 @@ class UserService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in this school.")
 
         return user
+
+    def get_student_profile_for_school(self, db: Session, school_id: int, student_id: int, current_user_context: UserContext) -> StudentProfile:
+        user = self.get_user_profile_for_school(db, school_id, student_id, current_user_context)
+
+        if not permission_helper.is_student(current_user_context):
+            student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
+            if not student_role:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+
+            association = crud_user.get_association_by_user_school_role(
+                db, user_id=student_id, school_id=school_id, role_id=student_role.id
+            )
+            if not association:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not a student in this school.")
+
+        assigned_lessons_count = 0
+        enrollments = crud_course_enrollment.get_by_user(db, user_id=student_id)
+        for enrollment in enrollments:
+            if enrollment.course:
+                curriculums = crud_curriculum.get_by_course(db, course_id=enrollment.course.id)
+                for curriculum in curriculums:
+                    assigned_lessons_count += len(curriculum.lessons)
+
+        account_balance = trading_service.get_account_balance(db, user_id=student_id)
+        trading_fund_balance = float(account_balance.balance)
+
+        pydantic_user = UserSchema.model_validate(user)
+        user_data = pydantic_user.model_dump()
+        user_data["assigned_lessons_count"] = assigned_lessons_count
+        user_data["trading_fund_balance"] = trading_fund_balance
+
+        return StudentProfile.model_validate(user_data)
+
+    def get_teacher_profile_for_school(self, db: Session, school_id: int, teacher_id: int, current_user_context: UserContext) -> UserSchema:
+        user = self.get_user_profile_for_school(db, school_id, teacher_id, current_user_context)
+
+        if not permission_helper.is_teacher(current_user_context):
+            teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
+            if not teacher_role:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Teacher role not found.")
+
+            association = crud_user.get_association_by_user_school_role(
+                db, user_id=teacher_id, school_id=school_id, role_id=teacher_role.id
+            )
+            if not association:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not a teacher in this school.")
+
+        return user
+
 
 user_service = UserService()

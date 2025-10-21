@@ -49,6 +49,11 @@ class User(UserBase):
     auth_provider: str
     model_config = ConfigDict(from_attributes=True)
 
+class StudentProfile(User):
+    """Schema for a student's profile, including lesson count and trading balance."""
+    assigned_lessons_count: int
+    trading_fund_balance: float
+
 class UserContext(BaseModel):
     """Represents a user's role within a specific school."""
     school: School
