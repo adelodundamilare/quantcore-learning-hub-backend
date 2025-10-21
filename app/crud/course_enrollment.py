@@ -72,5 +72,11 @@ class CRUDCourseEnrollment(CRUDBase[CourseEnrollment, CourseEnrollmentCreate, Co
             .all()
         )
 
+    def get_student_count_for_course(self, db: Session, course_id: int) -> int:
+        return (
+            self._query_active(db)
+            .filter(CourseEnrollment.course_id == course_id)
+            .count()
+        )
 
 course_enrollment = CRUDCourseEnrollment(CourseEnrollment)

@@ -10,7 +10,8 @@ from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
 from app.crud.course_enrollment import course_enrollment as crud_course_enrollment
 from app.crud.curriculum import curriculum as crud_curriculum
-from app.schemas.user import TeacherUpdate, UserContext, UserInvite, User as UserSchema, StudentProfile
+from app.crud.course import course as crud_course
+from app.schemas.user import TeacherProfile, TeacherUpdate, UserContext, UserInvite, User as UserSchema, StudentProfile
 from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash, verify_password
@@ -287,7 +288,7 @@ class UserService:
 
         return StudentProfile.model_validate(user_data)
 
-    def get_teacher_profile_for_school(self, db: Session, school_id: int, teacher_id: int, current_user_context: UserContext) -> UserSchema:
+    async def get_teacher_profile_for_school(self, db: Session, school_id: int, teacher_id: int, current_user_context: UserContext) -> TeacherProfile:
         user = self.get_user_profile_for_school(db, school_id, teacher_id, current_user_context)
 
         if not permission_helper.is_teacher(current_user_context):
@@ -301,7 +302,15 @@ class UserService:
             if not association:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not a teacher in this school.")
 
-        return user
+        teacher_courses = crud_course.get_teacher_courses(db, user_id=teacher_id)
+        total_students_taught = sum(
+            crud_course_enrollment.get_student_count_for_course(db, course_id=course.id)
+            for course in teacher_courses
+        )
 
+        user_data = UserSchema.model_validate(user).model_dump()
+        user_data["num_students_taught"] = total_students_taught
+
+        return TeacherProfile.model_validate(user_data)
 
 user_service = UserService()

@@ -55,6 +55,10 @@ class StudentProfile(User):
     assigned_lessons_count: int
     trading_fund_balance: TradingAccountSummary
 
+class TeacherProfile(User):
+    """Schema for a teacher's profile, including the number of students taught."""
+    num_students_taught: int
+
 class UserContext(BaseModel):
     """Represents a user's role within a specific school."""
     school: School

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.schemas.school import School, AdminSchoolDataSchema
 from app.services.school import school_service
 from app.schemas.response import APIResponse
-from app.schemas.user import AdminSchoolInvite, TeacherUpdate, User as UserSchema, UserContext, StudentProfile
+from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, User as UserSchema, UserContext, StudentProfile
 from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
@@ -124,14 +124,14 @@ async def get_school_student_profile(
     )
     return APIResponse(message="Student profile retrieved successfully", data=student_profile)
 
-@router.get("/{school_id}/teachers/{teacher_id}", response_model=APIResponse[UserSchema])
-def get_school_teacher_profile(
+@router.get("/{school_id}/teachers/{teacher_id}", response_model=APIResponse[TeacherProfile])
+async def get_school_teacher_profile(
     school_id: int,
     teacher_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    teacher_profile = user_service.get_teacher_profile_for_school(
+    teacher_profile = await user_service.get_teacher_profile_for_school(
         db, school_id=school_id, teacher_id=teacher_id, current_user_context=context
     )
-    return APIResponse(message="Teacher profile retrieved successfully", data=UserSchema.model_validate(teacher_profile))
+    return APIResponse(message="Teacher profile retrieved successfully", data=teacher_profile)
