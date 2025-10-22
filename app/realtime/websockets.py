@@ -3,10 +3,11 @@ from typing import Dict
 from collections import defaultdict
 import asyncio
 import logging
-import socketio # type: ignore
+import socketio
 from jose import jwt, JWTError
 from pydantic import ValidationError
-import httpx # New import
+import httpx
+from urllib.parse import parse_qs
 
 from app.services.polygon import polygon_service
 from app.core.config import settings
@@ -71,18 +72,21 @@ def register_websocket_events(sio_server: socketio.AsyncServer):
     async def connect(sid, environ, auth):
         db = None
         try:
-            if not auth or 'token' not in auth:
+            token = None
+            if auth and 'token' in auth:
+                token = auth['token']
+            elif environ.get('QUERY_STRING'):
+                query_params = parse_qs(environ.get('QUERY_STRING', ''))
+                token = query_params.get('token', [None])[0]
+
+            if not token:
                 logger.warning(f"Connection rejected for {sid}: No token")
                 return False
 
-            token = auth['token']
-
             db = SessionLocal()
-
 
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             token_data = TokenPayload(**payload)
-
 
             if token_data.jti and token_denylist_crud.get_by_jti(db, jti=token_data.jti):
                 logger.warning(f"Connection rejected for {sid}: Token has been revoked")
@@ -220,7 +224,6 @@ def register_websocket_events(sio_server: socketio.AsyncServer):
 
             if sid in user_sessions:
                 user_sessions[sid]['subscriptions'].discard(symbol)
-
 
             if not any(symbol in s['subscriptions'] for s in user_sessions.values()):
                 active_subscriptions.discard(symbol)

@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -9,16 +8,13 @@ from app.middleware.exceptions import global_exception_handler, validation_excep
 import socketio
 import asyncio
 
-
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=settings.ALLOWED_ORIGINS)
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
-
-app.mount("/socket.io", socketio.ASGIApp(sio))
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +23,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.mount("/socket.io", socketio.ASGIApp(sio))
 
 app.add_exception_handler(Exception, global_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
