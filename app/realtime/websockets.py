@@ -26,6 +26,15 @@ active_subscriptions: set[str] = set()
 
 symbol_error_backoff: Dict[str, datetime] = defaultdict(lambda: datetime.min)
 
+def _convert_datetime_to_iso(data):
+    if isinstance(data, datetime):
+        return data.isoformat()
+    if isinstance(data, dict):
+        return {k: _convert_datetime_to_iso(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_convert_datetime_to_iso(elem) for elem in data]
+    return data
+
 
 async def stream_prices_socketio(sio_server: socketio.AsyncServer):
     while True:
@@ -56,7 +65,8 @@ async def stream_prices_socketio(sio_server: socketio.AsyncServer):
                     symbol_error_backoff[symbol] = now
                     await sio_server.emit('error', {'symbol': symbol, 'message': f'Failed to get price: {str(quote_result)}'}, room=symbol)
                 elif quote_result:
-                    await sio_server.emit('price_update', {'symbol': symbol, 'data': quote_result}, room=symbol)
+                    serializable_quote = _convert_datetime_to_iso(quote_result)
+                    await sio_server.emit('price_update', {'symbol': symbol, 'data': serializable_quote}, room=symbol)
                     if symbol in symbol_error_backoff:
                         del symbol_error_backoff[symbol]
 
@@ -137,7 +147,7 @@ def register_websocket_events(sio_server: socketio.AsyncServer):
 
         for room in list(sio_server.rooms(sid)):
             if room != sid:
-                sio_server.leave_room(sid, room)
+                await sio_server.leave_room(sid, room)
 
         if sid in user_sessions:
             del user_sessions[sid]
@@ -180,7 +190,7 @@ def register_websocket_events(sio_server: socketio.AsyncServer):
 
             subscribe_limits[user_id].append(now)
 
-            sio_server.enter_room(sid, symbol)
+            await sio_server.enter_room(sid, symbol)
 
             if sid in user_sessions:
                 user_sessions[sid]['subscriptions'].add(symbol)
@@ -191,9 +201,10 @@ def register_websocket_events(sio_server: socketio.AsyncServer):
 
             initial_quote = await polygon_service.get_latest_quote(symbol)
             if initial_quote:
+                serializable_initial_quote = _convert_datetime_to_iso(initial_quote)
                 await sio_server.emit('price_update', {
                     'symbol': symbol,
-                    'data': initial_quote
+                    'data': serializable_initial_quote
                 }, room=sid)
 
             await sio_server.emit('subscribed', {
