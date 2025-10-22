@@ -281,10 +281,14 @@ class UserService:
 
         trading_summary = await trading_service.get_trading_account_summary(db, user_id=student_id)
 
+        association = crud_user.get_association_by_user_and_school(db, user_id=student_id, school_id=school_id)
+        student_level = association.level if association else None
+
         pydantic_user = UserSchema.model_validate(user)
         user_data = pydantic_user.model_dump()
         user_data["assigned_lessons_count"] = assigned_lessons_count
         user_data["trading_fund_balance"] = trading_summary
+        user_data["level"] = student_level
 
         return StudentProfile.model_validate(user_data)
 

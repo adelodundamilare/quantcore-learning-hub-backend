@@ -36,6 +36,12 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             user_school_association.c.role_id == role_id
         ).first()
 
+    def get_association_by_user_and_school(self, db: Session, *, user_id: int, school_id: int) -> Any | None:
+        return db.query(user_school_association).filter(
+            user_school_association.c.user_id == user_id,
+            user_school_association.c.school_id == school_id
+        ).first()
+
     def get_users_by_school_and_role(self, db: Session, *, school_id: int, role_id: int, skip: int = 0, limit: int = 100) -> List[User]:
         return (
             db.query(User)

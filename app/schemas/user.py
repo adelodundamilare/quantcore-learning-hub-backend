@@ -51,9 +51,9 @@ class User(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 class StudentProfile(User):
-    """Schema for a student's profile, including lesson count and trading balance."""
     assigned_lessons_count: int
     trading_fund_balance: TradingAccountSummary
+    level: Optional[CourseLevelEnum] = None
 
 class TeacherProfile(User):
     """Schema for a teacher's profile, including the number of students taught."""
