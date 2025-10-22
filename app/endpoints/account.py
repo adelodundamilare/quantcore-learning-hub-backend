@@ -19,6 +19,7 @@ from app.schemas.response import APIResponse
 from app.core.constants import RoleEnum
 from app.schemas.trading import AccountBalanceSchema
 from app.services.trading import trading_service
+from decimal import Decimal
 
 logger = setup_logger("account_api", "account.log")
 
@@ -27,7 +28,7 @@ router = APIRouter()
 @router.post("/students/{student_id}/add-funds", response_model=APIResponse[AccountBalanceSchema])
 async def add_funds_to_student_account(
     student_id: int,
-    amount: float,
+    amount: Decimal,
     db: Session = Depends(deps.get_transactional_db),
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
