@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.schemas.user import UserContext
-from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema
+from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema, TradingLeaderboardEntrySchema, TradingLeaderboardResponseSchema
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.course import course as crud_course
@@ -12,10 +12,13 @@ from app.crud.school import school as crud_school
 from app.crud.exam import exam as crud_exam
 from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.services.exam import exam_service
+from app.services.trading import trading_service
 from app.core.constants import ExamAttemptStatusEnum
 from app.schemas.report import StudentExamStats
+from app.schemas.user import User as UserSchema
 from app.utils.permission import PermissionHelper as permission_helper
 from fastapi import HTTPException, status
+import asyncio
 
 class ReportService:
     def get_student_exam_stats(self, db: Session, current_user_context: UserContext) -> StudentExamStats:
@@ -82,6 +85,51 @@ class ReportService:
         return LeaderboardResponseSchema(
             items=[LeaderboardEntrySchema(**entry._asdict()) for entry in leaderboard_data],
             total=total_students_in_school,
+            skip=skip,
+            limit=limit
+        )
+
+    async def get_trading_leaderboard(
+        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100
+    ) -> TradingLeaderboardResponseSchema:
+        permission_helper.require_school_view_permission(current_user_context, school_id)
+
+        student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
+        if not student_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+
+        students = crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=student_role.id)
+
+        leaderboard_entries = []
+        tasks = []
+
+        for student in students:
+            tasks.append(trading_service.get_trading_account_summary(db, user_id=student.id))
+
+        summaries = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, student in enumerate(students):
+            summary = summaries[i]
+            if isinstance(summary, Exception):
+                print(f"Error fetching trading summary for student {student.id}: {summary}")
+                continue
+
+            leaderboard_entries.append(TradingLeaderboardEntrySchema(
+                student_id=student.id,
+                student_full_name=student.full_name,
+                student_email=student.email,
+                starting_capital=summary.starting_capital,
+                current_balance=summary.current_balance,
+                trading_profit=summary.trading_profit
+            ))
+
+        leaderboard_entries.sort(key=lambda x: x.trading_profit, reverse=True)
+
+        paginated_entries = leaderboard_entries[skip : skip + limit]
+
+        return TradingLeaderboardResponseSchema(
+            items=paginated_entries,
+            total=len(leaderboard_entries),
             skip=skip,
             limit=limit
         )

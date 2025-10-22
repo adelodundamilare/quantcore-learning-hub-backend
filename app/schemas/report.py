@@ -42,6 +42,19 @@ class LeaderboardResponseSchema(BaseModel):
     skip: int
     limit: int
 
+class TradingLeaderboardEntrySchema(BaseModel):
+    student_id: int
+    student_full_name: str
+    student_email: EmailStr
+    starting_capital: float
+    current_balance: float
+    trading_profit: float
+
+class TradingLeaderboardResponseSchema(BaseModel):
+    items: List[TradingLeaderboardEntrySchema]
+    total: int
+    skip: int
+    limit: int
 
 class SchoolDashboardStatsSchema(BaseModel):
     total_students: int
