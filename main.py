@@ -7,6 +7,11 @@ from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
 import socketio
 import asyncio
+from datetime import datetime, timedelta
+
+from app.services.report import report_service
+from app.core.database import SessionLocal
+from app.crud.school import school as crud_school
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
@@ -49,10 +54,25 @@ trading_router = trading.create_trading_router()
 app.include_router(trading_router, prefix="/trading", tags=["Trading"])
 app.include_router(webhooks.router, tags=["Webhooks"])
 
+async def _run_leaderboard_precomputation():
+    while True:
+        db = SessionLocal()
+        try:
+            schools = crud_school.get_multi(db) # Assuming get_multi fetches all schools
+            for school in schools:
+                # current_user_context is not relevant for a background job, pass None
+                await report_service.precompute_trading_leaderboard(db, school_id=school.id, current_user_context=None)
+        except Exception as e:
+            print(f"Error during leaderboard precomputation: {e}")
+        finally:
+            db.close()
+        await asyncio.sleep(300) # Run every 5 minutes (300 seconds)
+
 @app.on_event("startup")
 async def startup_event():
     websocket_events.register_websocket_events(sio)
     asyncio.create_task(websocket_events.stream_prices_socketio(sio))
+    asyncio.create_task(_run_leaderboard_precomputation())
 
 if __name__ == "__main__":
     import uvicorn

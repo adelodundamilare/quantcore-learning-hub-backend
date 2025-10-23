@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.schemas.user import UserContext
+from app.schemas.report import SchoolReportSchema, StudentExamStats
 from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema, TradingLeaderboardEntrySchema, TradingLeaderboardResponseSchema
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
@@ -13,9 +14,8 @@ from app.crud.exam import exam as crud_exam
 from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.services.exam import exam_service
 from app.services.trading import trading_service
-from app.core.constants import ExamAttemptStatusEnum
 from app.schemas.report import StudentExamStats
-from app.schemas.user import User as UserSchema
+from app.crud.report import trading_leaderboard_snapshot
 from app.utils.permission import PermissionHelper as permission_helper
 from fastapi import HTTPException, status
 import asyncio
@@ -89,10 +89,11 @@ class ReportService:
             limit=limit
         )
 
-    async def get_trading_leaderboard(
-        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100
-    ) -> TradingLeaderboardResponseSchema:
-        permission_helper.require_school_view_permission(current_user_context, school_id)
+    async def precompute_trading_leaderboard(
+        self, db: Session, school_id: int, current_user_context: UserContext
+    ):
+        # Permission check is handled by the caller (background job) or can be added here if needed
+        # For now, assuming the background job has necessary permissions
 
         student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
         if not student_role:
@@ -100,36 +101,59 @@ class ReportService:
 
         students = crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=student_role.id)
 
-        leaderboard_entries = []
         tasks = []
-
         for student in students:
             tasks.append(trading_service.get_trading_account_summary(db, user_id=student.id))
 
         summaries = await asyncio.gather(*tasks, return_exceptions=True)
 
+        # For now, we'll just delete all snapshots older than a certain time, not specific to school.
+        trading_leaderboard_snapshot.delete_old_snapshots_for_school(db, school_id=school_id, older_than_minutes=10) # Delete snapshots older than 10 minutes
+
+        new_snapshots = []
         for i, student in enumerate(students):
             summary = summaries[i]
             if isinstance(summary, Exception):
                 print(f"Error fetching trading summary for student {student.id}: {summary}")
                 continue
 
+            snapshot_data = {
+                "student_id": student.id,
+                "student_full_name": student.full_name,
+                "student_email": student.email,
+                "starting_capital": summary.starting_capital,
+                "current_balance": summary.current_balance,
+                "trading_profit": summary.trading_profit,
+                "timestamp": datetime.utcnow(), # Ensure timestamp is set
+                "school_id": school_id
+            }
+            new_snapshots.append(trading_leaderboard_snapshot.create(db, obj_in=snapshot_data, commit=False))
+
+        db.commit()
+
+    async def get_trading_leaderboard(
+        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100
+    ) -> TradingLeaderboardResponseSchema:
+        permission_helper.require_school_view_permission(current_user_context, school_id)
+
+        # Retrieve pre-computed snapshots
+        snapshots = trading_leaderboard_snapshot.get_all_snapshots_for_school(db, school_id=school_id, skip=skip, limit=limit)
+        total_snapshots = trading_leaderboard_snapshot.count_snapshots_for_school(db, school_id=school_id)
+
+        leaderboard_entries = []
+        for snapshot in snapshots:
             leaderboard_entries.append(TradingLeaderboardEntrySchema(
-                student_id=student.id,
-                student_full_name=student.full_name,
-                student_email=student.email,
-                starting_capital=summary.starting_capital,
-                current_balance=summary.current_balance,
-                trading_profit=summary.trading_profit
+                student_id=snapshot.student_id,
+                student_full_name=snapshot.student_full_name,
+                student_email=snapshot.student_email,
+                starting_capital=snapshot.starting_capital,
+                current_balance=snapshot.current_balance,
+                trading_profit=snapshot.trading_profit
             ))
 
-        leaderboard_entries.sort(key=lambda x: x.trading_profit, reverse=True)
-
-        paginated_entries = leaderboard_entries[skip : skip + limit]
-
         return TradingLeaderboardResponseSchema(
-            items=paginated_entries,
-            total=len(leaderboard_entries),
+            items=leaderboard_entries,
+            total=total_snapshots,
             skip=skip,
             limit=limit
         )
