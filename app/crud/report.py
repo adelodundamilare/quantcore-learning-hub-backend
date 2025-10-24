@@ -29,6 +29,10 @@ class CRUDTradingLeaderboardSnapshot(CRUDBase[TradingLeaderboardSnapshot, Tradin
     def count_snapshots_for_school(self, db: Session, school_id: int) -> int:
         return db.query(self.model).filter(self.model.school_id == school_id).count()
 
+    def bulk_create_trading_leaderboard_snapshots(self, db: Session, snapshots_data: List[dict]):
+        db.bulk_insert_mappings(self.model, snapshots_data)
+        db.commit()
+
 trading_leaderboard_snapshot = CRUDTradingLeaderboardSnapshot(TradingLeaderboardSnapshot)
 
 class CRUDLeaderboardSnapshot(CRUDBase[LeaderboardSnapshot, LeaderboardEntrySchema, LeaderboardEntrySchema]):
@@ -53,5 +57,9 @@ class CRUDLeaderboardSnapshot(CRUDBase[LeaderboardSnapshot, LeaderboardEntrySche
 
     def count_snapshots_for_school(self, db: Session, school_id: int) -> int:
         return db.query(self.model).filter(self.model.school_id == school_id).count()
+
+    def bulk_create_leaderboard_snapshots(self, db: Session, snapshots_data: List[dict]):
+        db.bulk_insert_mappings(self.model, snapshots_data)
+        db.commit()
 
 leaderboard_snapshot = CRUDLeaderboardSnapshot(LeaderboardSnapshot)

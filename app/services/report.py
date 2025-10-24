@@ -119,9 +119,9 @@ class ReportService:
                 "timestamp": datetime.utcnow(),
                 "school_id": school_id
             }
-            new_snapshots.append(leaderboard_snapshot.create(db, obj_in=snapshot_data, commit=False))
+            new_snapshots.append(snapshot_data)
 
-        db.commit()
+        leaderboard_snapshot.bulk_create_leaderboard_snapshots(db, snapshots_data=new_snapshots)
 
     async def precompute_trading_leaderboard(
         self, db: Session, school_id: int, current_user_context: UserContext
@@ -156,9 +156,9 @@ class ReportService:
                 "timestamp": datetime.utcnow(), # Ensure timestamp is set
                 "school_id": school_id
             }
-            new_snapshots.append(trading_leaderboard_snapshot.create(db, obj_in=snapshot_data, commit=False))
+            new_snapshots.append(snapshot_data)
 
-        db.commit()
+        trading_leaderboard_snapshot.bulk_create_trading_leaderboard_snapshots(db, snapshots_data=new_snapshots)
 
     async def get_trading_leaderboard(
         self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100

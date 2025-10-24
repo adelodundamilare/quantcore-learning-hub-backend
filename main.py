@@ -62,6 +62,7 @@ async def _run_leaderboard_precomputation():
             for school in schools:
                 await report_service.precompute_trading_leaderboard(db, school_id=school.id, current_user_context=None)
                 await report_service.precompute_leaderboard(db, school_id=school.id)
+            print(f"Successfully precomputed leaderboards at {datetime.utcnow()}")
         except Exception as e:
             print(f"Error during leaderboard precomputation: {e}")
         finally:
