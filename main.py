@@ -58,15 +58,14 @@ async def _run_leaderboard_precomputation():
     while True:
         db = SessionLocal()
         try:
-            schools = crud_school.get_multi(db) # Assuming get_multi fetches all schools
+            schools = crud_school.get_multi(db)
             for school in schools:
-                # current_user_context is not relevant for a background job, pass None
                 await report_service.precompute_trading_leaderboard(db, school_id=school.id, current_user_context=None)
         except Exception as e:
             print(f"Error during leaderboard precomputation: {e}")
         finally:
             db.close()
-        await asyncio.sleep(300) # Run every 5 minutes (300 seconds)
+        await asyncio.sleep(60*60)
 
 @app.on_event("startup")
 async def startup_event():
