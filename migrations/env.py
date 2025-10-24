@@ -26,6 +26,7 @@ from app.models.user_answer import UserAnswer
 from app.models.question import Question
 from app.models.exam import Exam
 from app.models.course_reward import CourseReward
+from app.models.report import LeaderboardSnapshot, TradingLeaderboardSnapshot
 from app.models.trading import AccountBalance, PortfolioPosition, TradeOrder
 
 

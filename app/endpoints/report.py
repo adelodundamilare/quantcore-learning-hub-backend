@@ -26,17 +26,15 @@ def get_school_report(
 
 
 @router.get("/schools/{school_id}/leaderboard", response_model=APIResponse[LeaderboardResponseSchema])
-def get_school_leaderboard(
+async def get_school_leaderboard(
     *,
     db: Session = Depends(deps.get_db),
     school_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context),
     skip: int = 0,
-    limit: int = 100,
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None)
+    limit: int = 100
 ):
-    leaderboard_data = report_service.get_school_leaderboard(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit, start_date=start_date, end_date=end_date)
+    leaderboard_data = await report_service.get_school_leaderboard(db, school_id=school_id, current_user_context=context, skip=skip, limit=limit)
     return APIResponse(message="School leaderboard retrieved successfully", data=leaderboard_data)
 
 

@@ -4,7 +4,12 @@ from datetime import datetime
 
 from app.schemas.user import UserContext
 from app.schemas.report import SchoolReportSchema, StudentExamStats
-from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema, SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema, LeaderboardResponseSchema, TopPerformerSchema, TradingLeaderboardEntrySchema, TradingLeaderboardResponseSchema
+from app.schemas.report import (
+    AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema,
+    SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema,
+    LeaderboardResponseSchema, TopPerformerSchema, TradingLeaderboardEntrySchema,
+    TradingLeaderboardResponseSchema
+)
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.course import course as crud_course
@@ -15,7 +20,7 @@ from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.services.exam import exam_service
 from app.services.trading import trading_service
 from app.schemas.report import StudentExamStats
-from app.crud.report import trading_leaderboard_snapshot
+from app.crud.report import trading_leaderboard_snapshot, leaderboard_snapshot
 from app.utils.permission import PermissionHelper as permission_helper
 from fastapi import HTTPException, status
 import asyncio
@@ -67,34 +72,60 @@ class ReportService:
             most_active_user=most_active_user
         )
 
-    def get_school_leaderboard(
-        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+    async def get_school_leaderboard(
+        self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100
     ) -> LeaderboardResponseSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
-        leaderboard_data = crud_user.get_leaderboard_data_for_school(db, school_id=school_id, skip=skip, limit=limit, start_date=start_date, end_date=end_date)
+        snapshots = leaderboard_snapshot.get_all_snapshots_for_school(db, school_id=school_id, skip=skip, limit=limit)
+        total_snapshots = leaderboard_snapshot.count_snapshots_for_school(db, school_id=school_id)
 
-        student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
-        if not student_role:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
-
-        total_students_in_school = crud_user.get_users_by_school_and_role_count(
-            db, school_id=school_id, role_id=student_role.id, start_date=start_date, end_date=end_date
-        )
+        leaderboard_entries = []
+        for snapshot in snapshots:
+            leaderboard_entries.append(LeaderboardEntrySchema(
+                student_id=snapshot.student_id,
+                student_full_name=snapshot.student_full_name,
+                student_email=snapshot.student_email,
+                lessons_completed=snapshot.lessons_completed,
+                accumulated_exam_score=snapshot.accumulated_exam_score,
+                total_rewards=snapshot.total_rewards
+            ))
 
         return LeaderboardResponseSchema(
-            items=[LeaderboardEntrySchema(**entry._asdict()) for entry in leaderboard_data],
-            total=total_students_in_school,
+            items=leaderboard_entries,
+            total=total_snapshots,
             skip=skip,
             limit=limit
         )
 
+    async def precompute_leaderboard(self, db: Session, school_id: int):
+        student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
+        if not student_role:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
+
+        students = crud_user.get_users_by_school_and_role(db, school_id=school_id, role_id=student_role.id)
+        leaderboard_data = crud_user.get_leaderboard_data_for_school(db, school_id=school_id, skip=0, limit=len(students))
+        leaderboard_snapshot.delete_old_snapshots_for_school(db, school_id=school_id, older_than_minutes=121)
+
+        new_snapshots = []
+        for entry in leaderboard_data:
+            snapshot_data = {
+                "student_id": entry.student_id,
+                "student_full_name": entry.student_full_name,
+                "student_email": entry.student_email,
+                "lessons_completed": entry.lessons_completed,
+                "accumulated_exam_score": entry.accumulated_exam_score,
+                "total_rewards": entry.total_rewards,
+                "timestamp": datetime.utcnow(),
+                "school_id": school_id
+            }
+            new_snapshots.append(leaderboard_snapshot.create(db, obj_in=snapshot_data, commit=False))
+
+        db.commit()
+
     async def precompute_trading_leaderboard(
         self, db: Session, school_id: int, current_user_context: UserContext
     ):
-        # Permission check is handled by the caller (background job) or can be added here if needed
-        # For now, assuming the background job has necessary permissions
-
         student_role = crud_role.get_by_name(db, name=RoleEnum.STUDENT)
         if not student_role:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found.")
@@ -106,8 +137,6 @@ class ReportService:
             tasks.append(trading_service.get_trading_account_summary(db, user_id=student.id))
 
         summaries = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # For now, we'll just delete all snapshots older than a certain time, not specific to school.
         trading_leaderboard_snapshot.delete_old_snapshots_for_school(db, school_id=school_id, older_than_minutes=10) # Delete snapshots older than 10 minutes
 
         new_snapshots = []
@@ -136,7 +165,6 @@ class ReportService:
     ) -> TradingLeaderboardResponseSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
-        # Retrieve pre-computed snapshots
         snapshots = trading_leaderboard_snapshot.get_all_snapshots_for_school(db, school_id=school_id, skip=skip, limit=limit)
         total_snapshots = trading_leaderboard_snapshot.count_snapshots_for_school(db, school_id=school_id)
 
