@@ -37,7 +37,7 @@ async def create_stripe_customer(
 ):
     if context.user.stripe_customer:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stripe customer already exists for this user.")
-    
+
     customer = await stripe_service.create_customer(db, context.user)
     return APIResponse(message="Stripe customer created successfully", data=customer)
 
@@ -47,7 +47,7 @@ async def get_stripe_customer(
 ):
     if not context.user.stripe_customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this user.")
-    
+
     return APIResponse(message="Stripe customer retrieved successfully", data=context.user.stripe_customer)
 
 @router.post("/setup-intent", response_model=APIResponse[dict])
@@ -57,7 +57,7 @@ async def create_setup_intent(
 ):
     if not context.user.stripe_customer:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stripe customer not found. Please create one first.")
-    
+
     setup_intent = await stripe_service.create_setup_intent(context.user.stripe_customer.stripe_customer_id)
     return APIResponse(message="SetupIntent created successfully", data={"client_secret": setup_intent.client_secret})
 
@@ -69,7 +69,7 @@ async def add_payment_method(
 ):
     if not context.user.stripe_customer:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stripe customer not found. Please create one first.")
-    
+
     payment_method = await stripe_service.attach_payment_method(
         context.user.stripe_customer.stripe_customer_id,
         payment_method_in.payment_method_id
@@ -83,7 +83,7 @@ async def get_payment_methods(
 ):
     if not context.user.stripe_customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this user.")
-    
+
     payment_methods = await stripe_service.get_payment_methods(context.user.stripe_customer.stripe_customer_id)
     return APIResponse(message="Payment methods retrieved successfully", data=payment_methods)
 
@@ -131,7 +131,7 @@ async def get_invoices(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    invoices = await stripe_service.get_invoices(user=context.user)
+    invoices = await stripe_service.get_invoices(db, user=context.user)
     return APIResponse(message="Invoices retrieved successfully", data=invoices)
 
 @router.post("/create-checkout-session", response_model=APIResponse[CheckoutSession])
