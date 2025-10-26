@@ -81,3 +81,8 @@ class StudentExamStatusEnum(str, Enum):
     LOCKED = "locked"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+
+class TimePeriod(str, Enum):
+    YEAR = "year"
+    MONTH = "month"
+    WEEK = "week"

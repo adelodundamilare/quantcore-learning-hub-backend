@@ -143,3 +143,11 @@ class BillingReportSchema(BaseModel):
     total_revenue: float
     total_active_subscriptions: int
     number_of_schools: int
+
+class TimeseriesDataPoint(BaseModel):
+    period: str
+    revenue: float
+    transactions: int
+
+class TransactionTimeseriesReport(BaseModel):
+    data: List[TimeseriesDataPoint]

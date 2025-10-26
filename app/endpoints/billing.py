@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, status, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -23,9 +24,10 @@ from app.schemas.billing import (
     BillingHistoryInvoiceSchema,
     CheckoutSessionCreate,
     CheckoutSession,
-    BillingReportSchema
+    BillingReportSchema,
+    TransactionTimeseriesReport
 )
-from app.core.constants import RoleEnum
+from app.core.constants import RoleEnum, TimePeriod
 from app.models.billing import StripeCustomer
 from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
 
@@ -172,6 +174,37 @@ async def get_billing_report(
     """
     report = await stripe_service.get_billing_report(db)
     return APIResponse(message="Billing report retrieved successfully", data=report)
+
+@router.get("/admin/transactions/timeseries", response_model=APIResponse[TransactionTimeseriesReport], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+async def get_transaction_timeseries(
+    start_date: Optional[datetime] = Query(None, description="Start date for filtering transactions"),
+    end_date: Optional[datetime] = Query(None, description="End date for filtering transactions"),
+    period: TimePeriod = Query(..., description="Time period for aggregation (year, month, or week)"),
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """
+    Retrieve timeseries transaction data for administrators, filterable by year, month, or week.
+    """
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date must be before end_date"
+        )
+
+    if not start_date and not end_date:
+        now = datetime.now()
+        if period == TimePeriod.YEAR:
+            start_date = datetime(now.year, 1, 1)
+        elif period == TimePeriod.MONTH:
+            start_date = datetime(now.year, 1, 1)
+        elif period == TimePeriod.WEEK:
+            start_date = now - timedelta(days=90)
+
+    report = await stripe_service.get_transaction_timeseries(db, period,
+        start_date=start_date,
+        end_date=end_date)
+    return APIResponse(message="Transaction timeseries report retrieved successfully", data=report)
 
 @router.get("/admin/products", response_model=APIResponse[List[StripeProductSchema]], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 async def get_all_stripe_products(

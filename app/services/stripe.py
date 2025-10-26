@@ -10,11 +10,18 @@ from app.models.billing import StripeCustomer, Subscription
 from app.crud.subscription import subscription as crud_subscription
 from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
 from app.crud.user import user as crud_user
-from app.schemas.billing import BillingReportSchema, StripeCustomerCreate, BillingHistoryInvoiceSchema
+from app.schemas.billing import BillingReportSchema, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint
 from app.schemas.user import User as UserSchema
 from app.crud.school import school as crud_school
+from collections import defaultdict
+from enum import Enum
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+class TimePeriod(str, Enum):
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
 
 class StripeService:
     def __init__(self):
@@ -88,7 +95,7 @@ class StripeService:
 
     async def create_subscription(self, db: Session, user: UserSchema, price_ids: List[str], payment_method_id: Optional[str] = None) -> Subscription:
         customer = await self._get_or_create_customer(db, user)
-        user_model = crud_user.get(db, id=user.id) # Re-fetch to be safe
+        user_model = crud_user.get(db, id=user.id)
 
         items = [{"price": price_id} for price_id in price_ids]
         subscription = await self._make_request(
@@ -194,6 +201,55 @@ class StripeService:
             total_active_subscriptions=total_active_subscriptions,
             number_of_schools=number_of_schools
         )
+
+    async def get_transaction_timeseries(self, db: Session, period: TimePeriod, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> TransactionTimeseriesReport:
+        timeseries_data = defaultdict(lambda: {"revenue": 0.0, "transactions": 0})
+
+        filters = {"limit": 100}
+        if start_date or end_date:
+            filters["created"] = {}
+            if start_date:
+                filters["created"]["gte"] = int(start_date.timestamp())
+            if end_date:
+                filters["created"]["lte"] = int(end_date.timestamp())
+
+        charges = await self._make_request(stripe.Charge.list, **filters)
+
+        while True:
+            for charge in charges.data:
+                if charge.paid and charge.status == 'succeeded':
+                    charge_date = datetime.fromtimestamp(charge.created)
+
+                    if period == TimePeriod.YEAR:
+                        period_key = str(charge_date.year)
+                    elif period == TimePeriod.MONTH:
+                        period_key = charge_date.strftime("%Y-%m")
+                    elif period == TimePeriod.WEEK:
+                        iso = charge_date.isocalendar()
+                        period_key = f"{iso[0]}-W{iso[1]:02d}"
+
+                    timeseries_data[period_key]["revenue"] += charge.amount / 100.0
+                    timeseries_data[period_key]["transactions"] += 1
+
+            if not charges.has_more:
+                break
+
+            filters_pagination = dict(filters)
+            filters_pagination["starting_after"] = charges.data[-1].id
+            charges = await self._make_request(stripe.Charge.list, **filters_pagination)
+
+        sorted_data = sorted(timeseries_data.items())
+
+        report_data = [
+            TimeseriesDataPoint(
+                period=key,
+                revenue=values["revenue"],
+                transactions=values["transactions"]
+            )
+            for key, values in sorted_data
+        ]
+
+        return TransactionTimeseriesReport(data=report_data)
 
     async def create_invoice(self, stripe_customer_id: str, amount: float, currency: str, description: Optional[str] = None) -> stripe.Invoice:
         unit_amount_cents = int(amount * 100)
