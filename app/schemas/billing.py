@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -18,16 +18,19 @@ class StripeCustomerSchema(StripeCustomerBase):
     model_config = ConfigDict(from_attributes=True)
 
 class SubscriptionBase(BaseModel):
-    stripe_price_id: str
+    stripe_price_ids: List[str]
+
 
 class SubscriptionCreate(SubscriptionBase):
     payment_method_id: Optional[str] = None
 
-class SubscriptionSchema(SubscriptionBase):
+
+class SubscriptionSchema(BaseModel):
     id: int
     user_id: int
     stripe_customer_id: str
     stripe_subscription_id: str
+    stripe_price_ids: List[str] = Field(validation_alias='stripe_price_id')
     status: str
     current_period_start: datetime
     current_period_end: datetime
@@ -36,6 +39,13 @@ class SubscriptionSchema(SubscriptionBase):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('stripe_price_ids', mode='before')
+    @classmethod
+    def split_string(cls, v):
+        if isinstance(v, str):
+            return v.split(',')
+        return v
 
 class PaymentMethodAdd(BaseModel):
     payment_method_id: str
