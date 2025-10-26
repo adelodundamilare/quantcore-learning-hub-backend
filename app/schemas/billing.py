@@ -6,7 +6,8 @@ class StripeCustomerBase(BaseModel):
     pass
 
 class StripeCustomerCreate(StripeCustomerBase):
-    pass
+    user_id: int
+    stripe_customer_id: str
 
 class StripeCustomerSchema(StripeCustomerBase):
     id: int
@@ -85,11 +86,10 @@ class StripeProductUpdate(StripeProductBase):
     active: Optional[bool] = None
 
 class StripeProductSchema(StripeProductBase):
-    id: int
-    stripe_product_id: str
+    id: str
     active: bool
-    created_at: datetime
-    updated_at: Optional[datetime] = None
+    created: datetime
+    updated: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -113,3 +113,12 @@ class StripePriceSchema(StripePriceBase):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class BillingHistoryInvoiceSchema(BaseModel):
+    invoice_no: str
+    school_name: Optional[str] = None
+    school_email: str
+    amount: float
+    date: datetime
+    payment_method: Optional[str] = None
+    status: str

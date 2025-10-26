@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, model_validator
 from typing import Optional, Any, List
 
+from app.schemas.billing import StripeCustomerSchema
+
 from .school import School
 from .role import Role
 from app.core.constants import RoleEnum, CourseLevelEnum
@@ -48,6 +50,7 @@ class User(UserBase):
     is_active: bool
     # is_verified: bool
     auth_provider: str
+    stripe_customer: Optional[StripeCustomerSchema] = None
     model_config = ConfigDict(from_attributes=True)
 
 class StudentProfile(User):

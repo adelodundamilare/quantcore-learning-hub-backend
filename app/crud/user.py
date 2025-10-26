@@ -1,5 +1,5 @@
 from typing import Any, Optional, List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from datetime import datetime
 from app.core.constants import CourseLevelEnum
@@ -16,6 +16,12 @@ from app.models.course_reward import CourseReward
 from app.schemas.user import UserCreate, UserUpdate
 
 class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
+    def get(self, db: Session, id: Any) -> Optional[User]:
+        query = db.query(self.model).options(joinedload(self.model.stripe_customer)).filter(self.model.id == id)
+        if hasattr(self.model, 'deleted_at'):
+            query = query.filter(self.model.deleted_at == None)
+        return query.first()
+
     def get_by_email(self, db: Session, *, email: str) -> User | None:
         return db.query(User).filter(User.email == email).first()
 

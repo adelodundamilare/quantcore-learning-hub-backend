@@ -19,7 +19,8 @@ from app.schemas.billing import (
     StripeProductSchema,
     StripePriceCreate,
     StripePriceUpdate,
-    StripePriceSchema
+    StripePriceSchema,
+    BillingHistoryInvoiceSchema
 )
 from app.core.constants import RoleEnum
 from app.models.billing import StripeCustomer
@@ -125,15 +126,12 @@ async def cancel_subscription(
     subscription = await stripe_service.cancel_subscription(db=db, subscription_id=subscription_id)
     return APIResponse(message="Subscription cancelled successfully", data=subscription)
 
-@router.get("/invoices", response_model=APIResponse[List[InvoiceSchema]])
+@router.get("/invoices", response_model=APIResponse[List[BillingHistoryInvoiceSchema]])
 async def get_invoices(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    if not context.user.stripe_customer:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this user.")
-    
-    invoices = await stripe_service.get_invoices(context.user.stripe_customer.stripe_customer_id)
+    invoices = await stripe_service.get_invoices(user=context.user)
     return APIResponse(message="Invoices retrieved successfully", data=invoices)
 
 @router.post("/admin/products", response_model=APIResponse[StripeProductSchema], status_code=status.HTTP_201_CREATED, dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])

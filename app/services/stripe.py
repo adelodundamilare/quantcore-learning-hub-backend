@@ -9,7 +9,7 @@ from app.models.user import User
 from app.models.billing import StripeCustomer, Subscription
 from app.crud.subscription import subscription as crud_subscription
 from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
-from app.schemas.billing import StripeCustomerCreate
+from app.schemas.billing import StripeCustomerCreate, BillingHistoryInvoiceSchema
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -107,8 +107,31 @@ class StripeService:
         }
         return crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
 
-    async def get_invoices(self, stripe_customer_id: str) -> List[stripe.Invoice]:
-        return await self._make_request(stripe.Invoice.list, customer=stripe_customer_id)
+    async def get_invoices(self, user: User) -> List[BillingHistoryInvoiceSchema]:
+        if not user.stripe_customer:
+            return []
+            
+        invoices = await self._make_request(stripe.Invoice.list, customer=user.stripe_customer.stripe_customer_id, expand=["data.charge"])
+        
+        history = []
+        for invoice in invoices.data:
+            payment_method_details = "N/A"
+            if invoice.charge and invoice.charge.payment_method_details and invoice.charge.payment_method_details.card:
+                card = invoice.charge.payment_method_details.card
+                payment_method_details = f"{card.brand.capitalize()} **** {card.last4}"
+
+            history.append(
+                BillingHistoryInvoiceSchema(
+                    invoice_no=invoice.number or invoice.id,
+                    school_name=user.full_name,
+                    school_email=user.email,
+                    amount=invoice.amount_paid / 100,
+                    date=datetime.fromtimestamp(invoice.created),
+                    payment_method=payment_method_details,
+                    status=invoice.status
+                )
+            )
+        return history
 
     async def create_invoice(self, stripe_customer_id: str, amount: float, currency: str, description: Optional[str] = None) -> stripe.Invoice:
         unit_amount_cents = int(amount * 100)
