@@ -138,3 +138,8 @@ class CheckoutSessionCreate(BaseModel):
 class CheckoutSession(BaseModel):
     id: str
     url: Optional[str] = None
+
+class BillingReportSchema(BaseModel):
+    total_revenue: float
+    total_active_subscriptions: int
+    number_of_schools: int

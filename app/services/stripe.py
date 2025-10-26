@@ -10,8 +10,9 @@ from app.models.billing import StripeCustomer, Subscription
 from app.crud.subscription import subscription as crud_subscription
 from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
 from app.crud.user import user as crud_user
-from app.schemas.billing import StripeCustomerCreate, BillingHistoryInvoiceSchema
+from app.schemas.billing import BillingReportSchema, StripeCustomerCreate, BillingHistoryInvoiceSchema
 from app.schemas.user import User as UserSchema
+from app.crud.school import school as crud_school
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -172,6 +173,27 @@ class StripeService:
                 )
             )
         return history
+
+    async def get_billing_report(self, db: Session) -> BillingReportSchema:
+
+        total_revenue = 0.0
+        charges = await self._make_request(stripe.Charge.list, limit=100)
+        while True:
+            for charge in charges.data:
+                if charge.paid and charge.status == 'succeeded':
+                    total_revenue += charge.amount / 100.0
+            if not charges.has_more:
+                break
+            charges = await self._make_request(stripe.Charge.list, starting_after=charges.data[-1].id, limit=100)
+
+        total_active_subscriptions = crud_subscription.get_active_count(db)
+        number_of_schools = crud_school.get_all_schools_count(db)
+
+        return BillingReportSchema(
+            total_revenue=total_revenue,
+            total_active_subscriptions=total_active_subscriptions,
+            number_of_schools=number_of_schools
+        )
 
     async def create_invoice(self, stripe_customer_id: str, amount: float, currency: str, description: Optional[str] = None) -> stripe.Invoice:
         unit_amount_cents = int(amount * 100)

@@ -22,7 +22,8 @@ from app.schemas.billing import (
     StripePriceSchema,
     BillingHistoryInvoiceSchema,
     CheckoutSessionCreate,
-    CheckoutSession
+    CheckoutSession,
+    BillingReportSchema
 )
 from app.core.constants import RoleEnum
 from app.models.billing import StripeCustomer
@@ -160,6 +161,17 @@ async def create_stripe_product(
 ):
     product = await stripe_service.create_product(product_in.name, product_in.description)
     return APIResponse(message="Stripe product created successfully", data=product)
+
+@router.get("/admin/billing-report", response_model=APIResponse[BillingReportSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+async def get_billing_report(
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """
+    Retrieve a billing report for administrators, including total revenue, active subscriptions, and number of schools.
+    """
+    report = await stripe_service.get_billing_report(db)
+    return APIResponse(message="Billing report retrieved successfully", data=report)
 
 @router.get("/admin/products", response_model=APIResponse[List[StripeProductSchema]], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 async def get_all_stripe_products(

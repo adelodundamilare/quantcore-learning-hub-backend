@@ -26,4 +26,7 @@ class CRUDSubscription(CRUDBase[Subscription, BaseModel, BaseModel]):
         db.refresh(db_obj)
         return db_obj
 
+    def get_active_count(self, db: Session) -> int:
+        return db.query(self.model).filter(self.model.status == "active").count()
+
 subscription = CRUDSubscription(Subscription)
