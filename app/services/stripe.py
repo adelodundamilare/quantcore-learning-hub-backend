@@ -9,7 +9,9 @@ from app.models.user import User
 from app.models.billing import StripeCustomer, Subscription
 from app.crud.subscription import subscription as crud_subscription
 from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
+from app.crud.user import user as crud_user
 from app.schemas.billing import StripeCustomerCreate, BillingHistoryInvoiceSchema
+from app.schemas.user import User as UserSchema
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -21,62 +23,84 @@ class StripeService:
         try:
             result = stripe_api_call(*args, **kwargs)
             return result
-        except stripe.error.StripeError as e:
+        except stripe.StripeError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Stripe error: {e.user_message}")
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {e}")
 
-    async def create_customer(self, db: Session, user: User) -> StripeCustomer:
+    async def _get_or_create_customer(self, db: Session, user_schema: UserSchema) -> StripeCustomer:
+        user_model = crud_user.get(db, id=user_schema.id)
+        if not user_model:
+            raise HTTPException(status_code=404, detail="User not found in database.")
+
+        if user_model.stripe_customer:
+            return user_model.stripe_customer
+
         customer = await self._make_request(
             stripe.Customer.create,
-            email=user.email,
-            name=user.full_name or user.email,
-            metadata={"user_id": str(user.id)}
+            email=user_model.email,
+            name=user_model.full_name or user_model.email,
+            metadata={"user_id": str(user_model.id)}
         )
-        customer_in = StripeCustomerCreate(user_id=user.id, stripe_customer_id=customer.id)
-        return crud_stripe_customer.create(db, obj_in=customer_in)
+        customer_in = StripeCustomerCreate(user_id=user_model.id, stripe_customer_id=customer.id)
+        new_db_customer = crud_stripe_customer.create(db, obj_in=customer_in)
+
+        db.refresh(user_model)
+
+        return new_db_customer
+
+    async def create_customer(self, db: Session, user: UserSchema) -> StripeCustomer:
+        user_model = crud_user.get(db, id=user.id)
+        if not user_model:
+            raise HTTPException(status_code=404, detail="User not found in database.")
+        if user_model.stripe_customer:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stripe customer already exists for this user.")
+        return await self._get_or_create_customer(db, user)
 
     async def get_customer(self, stripe_customer_id: str) -> stripe.Customer:
         return await self._make_request(stripe.Customer.retrieve, stripe_customer_id)
 
-    async def create_setup_intent(self, stripe_customer_id: str) -> stripe.SetupIntent:
+    async def create_setup_intent(self, db: Session, user: UserSchema) -> stripe.SetupIntent:
+        customer = await self._get_or_create_customer(db, user)
         return await self._make_request(
             stripe.SetupIntent.create,
-            customer=stripe_customer_id,
+            customer=customer.stripe_customer_id,
             usage="off_session",
         )
 
-    async def attach_payment_method(self, stripe_customer_id: str, payment_method_id: str) -> stripe.PaymentMethod:
+    async def attach_payment_method(self, db: Session, user: UserSchema, payment_method_id: str) -> stripe.PaymentMethod:
+        customer = await self._get_or_create_customer(db, user)
         return await self._make_request(
             stripe.PaymentMethod.attach,
             payment_method_id,
-            customer=stripe_customer_id,
+            customer=customer.stripe_customer_id,
         )
 
-    async def get_payment_methods(self, stripe_customer_id: str) -> List[stripe.PaymentMethod]:
+    async def get_payment_methods(self, db: Session, user: UserSchema) -> List[stripe.PaymentMethod]:
+        customer = await self._get_or_create_customer(db, user)
         payment_methods = await self._make_request(
             stripe.PaymentMethod.list,
-            customer=stripe_customer_id,
+            customer=customer.stripe_customer_id,
             type="card"
         )
         return payment_methods.data
 
-    async def create_subscription(self, db: Session, user: User, price_ids: List[str], payment_method_id: Optional[str] = None) -> Subscription:
-        if not user.stripe_customer:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stripe customer not found for this user.")
+    async def create_subscription(self, db: Session, user: UserSchema, price_ids: List[str], payment_method_id: Optional[str] = None) -> Subscription:
+        customer = await self._get_or_create_customer(db, user)
+        user_model = crud_user.get(db, id=user.id) # Re-fetch to be safe
 
         items = [{"price": price_id} for price_id in price_ids]
         subscription = await self._make_request(
             stripe.Subscription.create,
-            customer=user.stripe_customer.stripe_customer_id,
+            customer=customer.stripe_customer_id,
             items=items,
             default_payment_method=payment_method_id,
             expand=["latest_invoice.payment_intent"]
         )
 
         db_subscription = Subscription(
-            user_id=user.id,
-            stripe_customer_id=user.stripe_customer.stripe_customer_id,
+            user_id=user_model.id,
+            stripe_customer_id=customer.stripe_customer_id,
             stripe_subscription_id=subscription.id,
             stripe_price_id=",".join(price_ids),
             status=subscription.status,
@@ -86,13 +110,28 @@ class StripeService:
         )
         return crud_subscription.create(db, obj_in=db_subscription)
 
+    async def create_checkout_session(self, db: Session, user: UserSchema, price_ids: List[str], success_url: str, cancel_url: str) -> stripe.checkout.Session:
+        customer = await self._get_or_create_customer(db, user)
+        line_items = [{"price": price_id, "quantity": 1} for price_id in price_ids]
+
+        checkout_session = await self._make_request(
+            stripe.checkout.Session.create,
+            customer=customer.stripe_customer_id,
+            line_items=line_items,
+            mode="subscription",
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+        return checkout_session
+
     async def get_subscription(self, db: Session, subscription_id: str) -> Optional[Subscription]:
         return crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription_id)
 
-    async def get_subscriptions(self, db: Session, user: User) -> List[Subscription]:
-        if not user.stripe_customer:
+    async def get_subscriptions(self, db: Session, user: UserSchema) -> List[Subscription]:
+        user_model = crud_user.get(db, id=user.id)
+        if not user_model or not user_model.stripe_customer:
             return []
-        return crud_subscription.get_multi_by_user(db, user_id=user.id)
+        return crud_subscription.get_multi_by_user(db, user_id=user_model.id)
 
     async def cancel_subscription(self, db: Session, subscription_id: str) -> Subscription:
         db_subscription = await self.get_subscription(db, subscription_id)
@@ -107,12 +146,13 @@ class StripeService:
         }
         return crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
 
-    async def get_invoices(self, user: User) -> List[BillingHistoryInvoiceSchema]:
-        if not user.stripe_customer:
+    async def get_invoices(self, db: Session, user: UserSchema) -> List[BillingHistoryInvoiceSchema]:
+        user_model = crud_user.get(db, id=user.id)
+        if not user_model or not user_model.stripe_customer:
             return []
-            
-        invoices = await self._make_request(stripe.Invoice.list, customer=user.stripe_customer.stripe_customer_id, expand=["data.charge"])
-        
+
+        invoices = await self._make_request(stripe.Invoice.list, customer=user_model.stripe_customer.stripe_customer_id, expand=["data.charge"])
+
         history = []
         for invoice in invoices.data:
             payment_method_details = "N/A"
@@ -123,8 +163,8 @@ class StripeService:
             history.append(
                 BillingHistoryInvoiceSchema(
                     invoice_no=invoice.number or invoice.id,
-                    school_name=user.full_name,
-                    school_email=user.email,
+                    school_name=user_model.full_name,
+                    school_email=user_model.email,
                     amount=invoice.amount_paid / 100,
                     date=datetime.fromtimestamp(invoice.created),
                     payment_method=payment_method_details,

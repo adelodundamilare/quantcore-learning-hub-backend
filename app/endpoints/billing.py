@@ -20,7 +20,9 @@ from app.schemas.billing import (
     StripePriceCreate,
     StripePriceUpdate,
     StripePriceSchema,
-    BillingHistoryInvoiceSchema
+    BillingHistoryInvoiceSchema,
+    CheckoutSessionCreate,
+    CheckoutSession
 )
 from app.core.constants import RoleEnum
 from app.models.billing import StripeCustomer
@@ -131,6 +133,24 @@ async def get_invoices(
 ):
     invoices = await stripe_service.get_invoices(user=context.user)
     return APIResponse(message="Invoices retrieved successfully", data=invoices)
+
+@router.post("/create-checkout-session", response_model=APIResponse[CheckoutSession])
+async def create_checkout_session(
+    session_in: CheckoutSessionCreate,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """
+    Create a Stripe Checkout session for subscribing to a plan.
+    """
+    checkout_session = await stripe_service.create_checkout_session(
+        db=db,
+        user=context.user,
+        price_ids=session_in.price_ids,
+        success_url=session_in.success_url,
+        cancel_url=session_in.cancel_url
+    )
+    return APIResponse(message="Checkout session created successfully", data=checkout_session)
 
 @router.post("/admin/products", response_model=APIResponse[StripeProductSchema], status_code=status.HTTP_201_CREATED, dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 async def create_stripe_product(

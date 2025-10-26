@@ -129,3 +129,12 @@ class BillingHistoryInvoiceSchema(BaseModel):
     date: datetime
     payment_method: Optional[str] = None
     status: str
+
+class CheckoutSessionCreate(BaseModel):
+    price_ids: List[str]
+    success_url: str
+    cancel_url: str
+
+class CheckoutSession(BaseModel):
+    id: str
+    url: Optional[str] = None
