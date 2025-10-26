@@ -41,14 +41,12 @@ async def create_stripe_customer(
 
 @router.get("/customer", response_model=APIResponse[StripeCustomerSchema])
 async def get_stripe_customer(
-    db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     if not context.user.stripe_customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this user.")
     
-    customer = await stripe_service.get_customer(context.user.stripe_customer.stripe_customer_id)
-    return APIResponse(message="Stripe customer retrieved successfully", data=customer)
+    return APIResponse(message="Stripe customer retrieved successfully", data=context.user.stripe_customer)
 
 @router.post("/setup-intent", response_model=APIResponse[dict])
 async def create_setup_intent(

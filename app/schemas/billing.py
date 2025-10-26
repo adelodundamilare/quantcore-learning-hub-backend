@@ -51,21 +51,23 @@ class SubscriptionSchema(BaseModel):
 class PaymentMethodAdd(BaseModel):
     payment_method_id: str
 
-class PaymentMethodSchema(BaseModel):
-    id: str
-    card_brand: str
-    card_last4: str
+class CardDetails(BaseModel):
+    brand: str
+    last4: str
     exp_month: int
     exp_year: int
-    is_default: bool = False
+
+class PaymentMethodSchema(BaseModel):
+    id: str
+    card: CardDetails
 
 class InvoiceSchema(BaseModel):
     id: str
-    amount_due: float
+    amount_due: int
     currency: str
     status: str
     invoice_pdf: Optional[str] = None
-    created_at: datetime
+    created: datetime
 
 class InvoiceCreate(BaseModel):
     school_id: int
@@ -93,24 +95,29 @@ class StripeProductSchema(StripeProductBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-class StripePriceBase(BaseModel):
+
+class StripePriceCreate(BaseModel):
     stripe_product_id: str
     unit_amount: int
     currency: str = "usd"
     recurring_interval: str = "month"
 
-class StripePriceCreate(StripePriceBase):
-    pass
 
 class StripePriceUpdate(BaseModel):
     active: Optional[bool] = None
 
-class StripePriceSchema(StripePriceBase):
-    id: int
-    stripe_price_id: str
+
+class StripePriceRecurring(BaseModel):
+    interval: str
+
+class StripePriceSchema(BaseModel):
+    id: str
     active: bool
-    created_at: datetime
-    updated_at: Optional[datetime] = None
+    currency: str
+    unit_amount: int
+    product: str
+    recurring: Optional[StripePriceRecurring] = None
+    created: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
