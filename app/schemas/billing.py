@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 
 class StripeCustomerBase(BaseModel):
@@ -80,12 +80,16 @@ class StripeProductBase(BaseModel):
     description: Optional[str] = None
 
 class StripeProductCreate(StripeProductBase):
-    pass
+    unit_amount: int
+    currency: str = "usd"
+    recurring_interval: str = "month"
+    metadata: Optional[dict] = None
 
 class StripeProductUpdate(StripeProductBase):
     name: Optional[str] = None
     description: Optional[str] = None
     active: Optional[bool] = None
+    metadata: Optional[dict] = None
 
 class StripeProductSchema(StripeProductBase):
     id: str
@@ -96,15 +100,10 @@ class StripeProductSchema(StripeProductBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class StripePriceCreate(BaseModel):
-    stripe_product_id: str
-    unit_amount: int
-    currency: str = "usd"
-    recurring_interval: str = "month"
-
 
 class StripePriceUpdate(BaseModel):
     active: Optional[bool] = None
+    metadata: Optional[dict] = None
 
 
 class StripePriceRecurring(BaseModel):
@@ -115,9 +114,10 @@ class StripePriceSchema(BaseModel):
     active: bool
     currency: str
     unit_amount: int
-    product: str
+    product: StripeProductSchema
     recurring: Optional[StripePriceRecurring] = None
     created: datetime
+    metadata: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 

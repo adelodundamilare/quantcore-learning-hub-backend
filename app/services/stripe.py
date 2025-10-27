@@ -268,39 +268,99 @@ class StripeService:
             auto_advance=False
         )
 
-    async def create_product(self, name: str, description: Optional[str] = None) -> stripe.Product:
-        return await self._make_request(stripe.Product.create, name=name, description=description, type="service")
+    async def create_product(self, name: str, description: Optional[str] = None, unit_amount: int = None, currency: str = "usd", recurring_interval: str = "month", metadata: Optional[Dict[str, str]] = None) -> stripe.Product:
+        product_data = {"name": name}
+        if description:
+            product_data["description"] = description
+        if metadata:
+            product_data["metadata"] = metadata
+
+        if unit_amount is not None:
+            product_data["default_price_data"] = {
+                "currency": currency,
+                "unit_amount": unit_amount,
+                "recurring": {"interval": recurring_interval}
+            }
+
+        return await self._make_request(stripe.Product.create, **product_data)
+
+    async def get_all_products(self) -> List[Dict[str, Any]]:
+        products = await self._make_request(stripe.Product.list, limit=100)
+        prices = await self._make_request(stripe.Price.list, limit=100)
+
+        price_map = {}
+        for price in prices.data:
+            if price.active and price.product not in price_map:
+                price_map[price.product] = price
+
+        result = []
+        for product in products.data:
+            if not product.active:
+                continue
+
+            price = price_map.get(product.id)
+
+            result.append({
+                "id": product.id,
+                "name": product.name,
+                "description": product.description,
+                "metadata": product.metadata,
+                "price": {
+                    "id": price.id if price else None,
+                    "amount": price.unit_amount / 100 if price else None,
+                    "currency": price.currency if price else None,
+                    "interval": price.recurring.interval if price and price.recurring else None
+                } if price else None
+            })
+
+        return result
 
     async def get_product(self, product_id: str) -> stripe.Product:
         return await self._make_request(stripe.Product.retrieve, product_id)
 
-    async def update_product(self, product_id: str, name: Optional[str] = None, description: Optional[str] = None, active: Optional[bool] = None) -> stripe.Product:
-        return await self._make_request(stripe.Product.modify, product_id, name=name, description=description, active=active)
+    async def update_product(self, product_id: str, name: Optional[str] = None, description: Optional[str] = None, active: Optional[bool] = None, metadata: Optional[Dict[str, str]] = None) -> stripe.Product:
+        update_data = {}
+        if name is not None:
+            update_data["name"] = name
+        if description is not None:
+            update_data["description"] = description
+        if active is not None:
+            update_data["active"] = active
+        if metadata is not None:
+            update_data["metadata"] = metadata
+        return await self._make_request(stripe.Product.modify, product_id, **update_data)
 
     async def delete_product(self, product_id: str) -> stripe.Product:
         return await self._make_request(stripe.Product.delete, product_id)
 
-    async def create_price(self, product_id: str, unit_amount: int, currency: str = "usd", recurring_interval: str = "month") -> stripe.Price:
-        return await self._make_request(
-            stripe.Price.create,
-            product=product_id,
-            unit_amount=unit_amount,
-            currency=currency,
-            recurring={"interval": recurring_interval}
-        )
-
     async def get_price(self, price_id: str) -> stripe.Price:
         return await self._make_request(stripe.Price.retrieve, price_id)
 
-    async def update_price(self, price_id: str, active: Optional[bool] = None) -> stripe.Price:
-        return await self._make_request(stripe.Price.modify, price_id, active=active)
+    async def update_price(self, price_id: str, active: Optional[bool] = None, metadata: Optional[Dict[str, str]] = None) -> stripe.Price:
+        update_data = {}
+        if active is not None:
+            update_data["active"] = active
+        if metadata is not None:
+            update_data["metadata"] = metadata
+        return await self._make_request(stripe.Price.modify, price_id, expand=["product"], **update_data)
 
-    async def get_all_products(self) -> List[stripe.Product]:
-        products = await self._make_request(stripe.Product.list)
-        return products.data
+    async def get_all_prices(self) -> List[Dict[str, Any]]:
+        prices = await self._make_request(stripe.Price.list, active=True, expand=["data.product"])
 
-    async def get_all_prices(self) -> List[stripe.Price]:
-        prices = await self._make_request(stripe.Price.list)
-        return prices.data
+        result = []
+        for price in prices.data:
+            product = price.product
+
+            result.append({
+                "id": price.id,
+                "amount": price.unit_amount,
+                "currency": price.currency,
+                "interval": price.recurring.interval if price.recurring else None,
+                "product_id": product.id if hasattr(product, 'id') else product,
+                "product_name": product.name if hasattr(product, 'name') else None,
+                "product_metadata": product.metadata if hasattr(product, 'metadata') else {}
+            })
+
+        return result
 
 stripe_service = StripeService()

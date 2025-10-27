@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, status, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.schemas.response import APIResponse
 from app.schemas.user import UserContext
@@ -18,7 +18,6 @@ from app.schemas.billing import (
     StripeProductCreate,
     StripeProductUpdate,
     StripeProductSchema,
-    StripePriceCreate,
     StripePriceUpdate,
     StripePriceSchema,
     BillingHistoryInvoiceSchema,
@@ -161,7 +160,7 @@ async def create_stripe_product(
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    product = await stripe_service.create_product(product_in.name, product_in.description)
+    product = await stripe_service.create_product(product_in.name, product_in.description, product_in.unit_amount, product_in.currency, product_in.recurring_interval, product_in.metadata)
     return APIResponse(message="Stripe product created successfully", data=product)
 
 @router.get("/admin/billing-report", response_model=APIResponse[BillingReportSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
@@ -206,7 +205,7 @@ async def get_transaction_timeseries(
         end_date=end_date)
     return APIResponse(message="Transaction timeseries report retrieved successfully", data=report)
 
-@router.get("/admin/products", response_model=APIResponse[List[StripeProductSchema]], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+@router.get("/products", response_model=APIResponse[List[Dict[str, Any]]])
 async def get_all_stripe_products(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -214,7 +213,7 @@ async def get_all_stripe_products(
     products = await stripe_service.get_all_products()
     return APIResponse(message="Stripe products retrieved successfully", data=products)
 
-@router.get("/admin/products/{product_id}", response_model=APIResponse[StripeProductSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+@router.get("/products/{product_id}", response_model=APIResponse[StripeProductSchema])
 async def get_stripe_product(
     product_id: str,
     db: Session = Depends(deps.get_db),
@@ -232,7 +231,7 @@ async def update_stripe_product(
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    product = await stripe_service.update_product(product_id, product_in.name, product_in.description, product_in.active)
+    product = await stripe_service.update_product(product_id, product_in.name, product_in.description, product_in.active, product_in.metadata)
     return APIResponse(message="Stripe product updated successfully", data=product)
 
 @router.delete("/admin/products/{product_id}", response_model=APIResponse[StripeProductSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
@@ -244,16 +243,7 @@ async def delete_stripe_product(
     product = await stripe_service.delete_product(product_id)
     return APIResponse(message="Stripe product deleted successfully", data=product)
 
-@router.post("/admin/prices", response_model=APIResponse[StripePriceSchema], status_code=status.HTTP_201_CREATED, dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
-async def create_stripe_price(
-    price_in: StripePriceCreate,
-    db: Session = Depends(deps.get_transactional_db),
-    context: UserContext = Depends(deps.get_current_user_with_context)
-):
-    price = await stripe_service.create_price(price_in.stripe_product_id, price_in.unit_amount, price_in.currency, price_in.recurring_interval)
-    return APIResponse(message="Stripe price created successfully", data=price)
-
-@router.get("/admin/prices", response_model=APIResponse[List[StripePriceSchema]], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+@router.get("/prices", response_model=APIResponse[List[Dict[str, Any]]])
 async def get_all_stripe_prices(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -261,7 +251,7 @@ async def get_all_stripe_prices(
     prices = await stripe_service.get_all_prices()
     return APIResponse(message="Stripe prices retrieved successfully", data=prices)
 
-@router.get("/admin/prices/{price_id}", response_model=APIResponse[StripePriceSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+@router.get("/prices/{price_id}", response_model=APIResponse[StripePriceSchema])
 async def get_stripe_price(
     price_id: str,
     db: Session = Depends(deps.get_db),
@@ -279,7 +269,7 @@ async def update_stripe_price(
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    price = await stripe_service.update_price(price_id, price_in.active)
+    price = await stripe_service.update_price(price_id, price_in.active, price_in.metadata)
     return APIResponse(message="Stripe price updated successfully", data=price)
 
 @router.delete("/admin/prices/{price_id}", response_model=APIResponse[StripePriceSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
