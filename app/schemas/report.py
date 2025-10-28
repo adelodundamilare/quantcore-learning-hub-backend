@@ -22,6 +22,8 @@ class AdminDashboardReportSchema(BaseModel):
     total_courses_count: int
     total_schools_count: int
     total_students_count: int
+    total_revenue: float
+
 class SchoolReportSchema(BaseModel):
     total_courses_count: int
     total_enrolled_students_count: int

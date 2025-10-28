@@ -19,6 +19,7 @@ from app.crud.exam import exam as crud_exam
 from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.services.exam import exam_service
 from app.services.trading import trading_service
+from app.services.stripe import stripe_service
 from app.schemas.report import StudentExamStats
 from app.crud.report import trading_leaderboard_snapshot, leaderboard_snapshot
 from app.utils.permission import PermissionHelper as permission_helper
@@ -214,11 +215,13 @@ class ReportService:
         total_courses_count = crud_course.get_all_courses_count(db, start_date=start_date, end_date=end_date)
         total_schools_count = crud_school.get_all_schools_count(db, start_date=start_date, end_date=end_date)
         total_students_count = crud_user.get_all_students_count(db, start_date=start_date, end_date=end_date)
+        total_revenue = asyncio.run(stripe_service.get_total_revenue(start_date=start_date, end_date=end_date))
 
         return AdminDashboardReportSchema(
             total_courses_count=total_courses_count,
             total_schools_count=total_schools_count,
-            total_students_count=total_students_count
+            total_students_count=total_students_count,
+            total_revenue=total_revenue
         )
 
     def get_admin_dashboard_stats(self, db: Session, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> AdminDashboardReportSchema:

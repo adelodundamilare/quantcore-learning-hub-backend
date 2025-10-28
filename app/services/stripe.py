@@ -268,9 +268,17 @@ class StripeService:
             )
         return history
 
-    async def get_billing_report(self, db: Session) -> BillingReportSchema:
+    async def get_total_revenue(self, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> float:
         total_revenue = 0.0
-        charges = await self._make_request(stripe.Charge.list, limit=100)
+        charge_params = {"limit": 100}
+        if start_date:
+            charge_params["created"] = {"gte": int(start_date.timestamp())}
+        if end_date:
+            if "created" not in charge_params:
+                charge_params["created"] = {}
+            charge_params["created"]["lte"] = int(end_date.timestamp())
+
+        charges = await self._make_request(stripe.Charge.list, **charge_params)
 
         while True:
             for charge in charges.data:
@@ -278,8 +286,12 @@ class StripeService:
                     total_revenue += charge.amount / 100.0
             if not charges.has_more:
                 break
-            charges = await self._make_request(stripe.Charge.list, starting_after=charges.data[-1].id, limit=100)
+            charge_params["starting_after"] = charges.data[-1].id
+            charges = await self._make_request(stripe.Charge.list, **charge_params)
+        return total_revenue
 
+    async def get_billing_report(self, db: Session) -> BillingReportSchema:
+        total_revenue = await self.get_total_revenue()
         total_active_subscriptions = crud_subscription.get_active_count(db)
         number_of_schools = crud_school.get_all_schools_count(db)
 
