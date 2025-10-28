@@ -13,7 +13,7 @@ from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.core.constants import RoleEnum
 from app.schemas.billing import BillingReportSchema, InvoiceCreate, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint
-from app.schemas.user import User as UserSchema
+from app.schemas.user import User as UserSchema, UserContext
 from app.crud.school import school as crud_school
 from collections import defaultdict
 from enum import Enum
@@ -187,25 +187,79 @@ class StripeService:
         }
         return crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
 
-    async def get_invoices(self, db: Session, user: UserSchema) -> List[BillingHistoryInvoiceSchema]:
-        user_model = crud_user.get(db, id=user.id)
-        if not user_model or not user_model.stripe_customer:
-            return []
+    async def get_invoices(self, db: Session, context: UserContext) -> List[BillingHistoryInvoiceSchema]:
+        user_model = context.user
 
-        invoices = await self._make_request(stripe.Invoice.list, customer=user_model.stripe_customer.stripe_customer_id, expand=["data.charge"])
+        invoice_params = {
+            "limit": 100,
+            "expand": ["data.charge", "data.default_payment_method"]
+        }
+
+        if not context.role or context.role.name != RoleEnum.SUPER_ADMIN:
+            if not user_model.stripe_customer:
+                return []
+            invoice_params['customer'] = user_model.stripe_customer.stripe_customer_id
+
+        invoices_response = await self._make_request(stripe.Invoice.list, **invoice_params)
 
         history = []
-        for invoice in invoices.data:
+        for invoice in invoices_response.data:
             payment_method_details = "N/A"
-            if invoice.charge and invoice.charge.payment_method_details and invoice.charge.payment_method_details.card:
-                card = invoice.charge.payment_method_details.card
-                payment_method_details = f"{card.brand.capitalize()} **** {card.last4}"
+
+            charge = getattr(invoice, 'charge', None)
+            if charge:
+                if isinstance(charge, str):
+                    try:
+                        charge_obj = await self._make_request(stripe.Charge.retrieve, charge)
+                        if hasattr(charge_obj, 'payment_method_details') and charge_obj.payment_method_details:
+                            pmd = charge_obj.payment_method_details
+                            if hasattr(pmd, 'card') and pmd.card:
+                                card = pmd.card
+                                payment_method_details = f"{card.brand.capitalize()} **** {card.last4}"
+                    except:
+                        pass
+                else:
+                    if hasattr(charge, 'payment_method_details') and charge.payment_method_details:
+                        pmd = charge.payment_method_details
+                        if hasattr(pmd, 'card') and pmd.card:
+                            card = pmd.card
+                            payment_method_details = f"{card.brand.capitalize()} **** {card.last4}"
+
+            if payment_method_details == "N/A":
+                default_pm = getattr(invoice, 'default_payment_method', None)
+                if default_pm:
+                    if isinstance(default_pm, str):
+                        try:
+                            pm_obj = await self._make_request(stripe.PaymentMethod.retrieve, default_pm)
+                            if hasattr(pm_obj, 'card') and pm_obj.card:
+                                payment_method_details = f"{pm_obj.card.brand.capitalize()} **** {pm_obj.card.last4}"
+                        except:
+                            pass
+                    else:
+                        if hasattr(default_pm, 'card') and default_pm.card:
+                            payment_method_details = f"{default_pm.card.brand.capitalize()} **** {default_pm.card.last4}"
+
+            customer_name = "N/A"
+            customer_email = "N/A"
+
+            customer = getattr(invoice, 'customer', None)
+            if customer:
+                if isinstance(customer, str):
+                    try:
+                        customer_obj = await self._make_request(stripe.Customer.retrieve, customer)
+                        customer_name = getattr(customer_obj, 'name', None) or "N/A"
+                        customer_email = getattr(customer_obj, 'email', None) or "N/A"
+                    except:
+                        pass
+                else:
+                    customer_name = getattr(customer, 'name', None) or "N/A"
+                    customer_email = getattr(customer, 'email', None) or "N/A"
 
             history.append(
                 BillingHistoryInvoiceSchema(
                     invoice_no=invoice.number or invoice.id,
-                    school_name=user_model.full_name,
-                    school_email=user_model.email,
+                    school_name=customer_name,
+                    school_email=customer_email,
                     amount=invoice.amount_paid / 100,
                     date=datetime.fromtimestamp(invoice.created),
                     payment_method=payment_method_details,
@@ -215,9 +269,9 @@ class StripeService:
         return history
 
     async def get_billing_report(self, db: Session) -> BillingReportSchema:
-
         total_revenue = 0.0
         charges = await self._make_request(stripe.Charge.list, limit=100)
+
         while True:
             for charge in charges.data:
                 if charge.paid and charge.status == 'succeeded':
@@ -283,29 +337,33 @@ class StripeService:
         ]
 
         return TransactionTimeseriesReport(data=report_data)
-
     async def create_invoice(self, db: Session, invoice_in: InvoiceCreate) -> stripe.Invoice:
-        school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice_in.school_id)
+            school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice_in.school_id)
 
-        school_customer = crud_stripe_customer.get_by_user_id(db, user_id=invoice_in.school_id)
-        if not school_customer:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this school.")
+            unit_amount_cents = int(invoice_in.amount * 100)
 
-        unit_amount_cents = int(invoice_in.amount * 100)
-        await self._make_request(
-            stripe.InvoiceItem.create,
-            customer=school_customer.stripe_customer_id,
-            amount=unit_amount_cents,
-            currency=invoice_in.currency,
-            description=invoice_in.description
-        )
-        return await self._make_request(
-            stripe.Invoice.create,
-            customer=school_customer.stripe_customer_id,
-            collection_method='send_invoice',
-            days_until_due=7,
-            auto_advance=False
-        )
+            invoice = await self._make_request(
+                stripe.Invoice.create,
+                customer=school_customer.stripe_customer_id,
+                collection_method='send_invoice',
+                days_until_due=7
+            )
+
+            await self._make_request(
+                stripe.InvoiceItem.create,
+                customer=school_customer.stripe_customer_id,
+                invoice=invoice.id,
+                amount=unit_amount_cents,
+                currency=invoice_in.currency,
+                description=invoice_in.description
+            )
+
+            finalized_invoice = await self._make_request(
+                stripe.Invoice.finalize_invoice,
+                invoice.id
+            )
+
+            return finalized_invoice
 
     async def create_product(self, name: str, description: Optional[str] = None, unit_amount: int = None, currency: str = "usd", recurring_interval: str = "month", metadata: Optional[Dict[str, str]] = None) -> stripe.Product:
         product_data = {"name": name}

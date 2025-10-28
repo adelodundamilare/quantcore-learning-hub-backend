@@ -133,7 +133,7 @@ async def get_invoices(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    invoices = await stripe_service.get_invoices(db, user=context.user)
+    invoices = await stripe_service.get_invoices(db, context=context)
     return APIResponse(message="Invoices retrieved successfully", data=invoices)
 
 @router.post("/create-checkout-session", response_model=APIResponse[CheckoutSession])
