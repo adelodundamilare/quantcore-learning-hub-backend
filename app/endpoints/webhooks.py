@@ -26,14 +26,11 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
         customer = event['data']['object']
         print(f"Customer created: {customer['id']}")
     elif event['type'] == 'customer.subscription.created':
-        subscription = event['data']['object']
-        print(f"Subscription created: {subscription['id']}")
+        await stripe_service.handle_subscription_created_event(db, event)
     elif event['type'] == 'customer.subscription.updated':
-        subscription = event['data']['object']
-        print(f"Subscription updated: {subscription['id']}")
+        await stripe_service.handle_subscription_updated_event(db, event)
     elif event['type'] == 'customer.subscription.deleted':
-        subscription = event['data']['object']
-        print(f"Subscription deleted: {subscription['id']}")
+        await stripe_service.handle_subscription_deleted_event(db, event)
     elif event['type'] == 'invoice.paid':
         await stripe_service.handle_invoice_paid_event(db, event)
     else:

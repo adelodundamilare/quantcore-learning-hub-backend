@@ -497,4 +497,44 @@ class StripeService:
                     notification_type="payment_success"
                 )
 
+    async def handle_subscription_created_event(self, db: Session, event: stripe.Event):
+        subscription = event['data']['object']
+        customer_id = subscription['customer']
+        stripe_customer = crud_stripe_customer.get_by_stripe_customer_id(db, stripe_customer_id=customer_id)
+        if stripe_customer:
+            user = crud_user.get(db, id=stripe_customer.user_id)
+            if user:
+                db_subscription = Subscription(
+                    user_id=user.id,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription['id'],
+                    stripe_price_id=",".join([item['price']['id'] for item in subscription['items']['data']]),
+                    status=subscription['status'],
+                    current_period_start=datetime.fromtimestamp(subscription['current_period_start']),
+                    current_period_end=datetime.fromtimestamp(subscription['current_period_end']),
+                    cancel_at_period_end=subscription['cancel_at_period_end'],
+                )
+                crud_subscription.create(db, obj_in=db_subscription)
+
+    async def handle_subscription_updated_event(self, db: Session, event: stripe.Event):
+        subscription = event['data']['object']
+        db_subscription = crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription['id'])
+        if db_subscription:
+            update_data = {
+                "status": subscription['status'],
+                "current_period_start": datetime.fromtimestamp(subscription['current_period_start']),
+                "current_period_end": datetime.fromtimestamp(subscription['current_period_end']),
+                "cancel_at_period_end": subscription['cancel_at_period_end'],
+            }
+            crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
+
+    async def handle_subscription_deleted_event(self, db: Session, event: stripe.Event):
+        subscription = event['data']['object']
+        db_subscription = crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription['id'])
+        if db_subscription:
+            update_data = {
+                "status": "canceled"
+            }
+            crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
+
 stripe_service = StripeService()
