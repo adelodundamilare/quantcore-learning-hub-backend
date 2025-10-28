@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 import stripe
+from stripe import SignatureVerificationError
 
 from app.core.config import settings
 from app.utils import deps
@@ -19,7 +20,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except stripe.error.SignatureVerificationError as e:
+    except SignatureVerificationError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     if event['type'] == 'customer.created':
