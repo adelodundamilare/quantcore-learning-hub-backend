@@ -4,6 +4,7 @@ import stripe
 
 from app.core.config import settings
 from app.utils import deps
+from app.services.stripe import stripe_service
 
 router = APIRouter()
 
@@ -33,6 +34,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
     elif event['type'] == 'customer.subscription.deleted':
         subscription = event['data']['object']
         print(f"Subscription deleted: {subscription['id']}")
+    elif event['type'] == 'invoice.paid':
+        await stripe_service.handle_invoice_paid_event(db, event)
     else:
         print(f"Unhandled event type {event['type']}")
 

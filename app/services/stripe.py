@@ -15,6 +15,8 @@ from app.core.constants import RoleEnum
 from app.schemas.billing import BillingReportSchema, InvoiceCreate, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint
 from app.schemas.user import User as UserSchema, UserContext
 from app.crud.school import school as crud_school
+from app.services.email import EmailService
+from app.services.notification import notification_service
 from collections import defaultdict
 from enum import Enum
 
@@ -474,5 +476,25 @@ class StripeService:
 
     async def update_invoice_status(self, invoice_id: str, status: str) -> stripe.Invoice:
         return await self._make_request(stripe.Invoice.modify, invoice_id, status=status)
+
+    async def handle_invoice_paid_event(self, db: Session, event: stripe.Event):
+        invoice = event['data']['object']
+        customer_id = invoice['customer']
+        stripe_customer = crud_stripe_customer.get_by_stripe_customer_id(db, stripe_customer_id=customer_id)
+        if stripe_customer:
+            user = crud_user.get(db, id=stripe_customer.user_id)
+            if user:
+                EmailService.send_email(
+                    to_email=user.email,
+                    subject="Your payment was successful",
+                    template_name="payment_success.html",
+                    template_context={'user_name': user.full_name, 'invoice_id': invoice['id']}
+                )
+                notification_service.create_notification(
+                    db,
+                    user_id=user.id,
+                    message=f"Your payment for invoice {invoice['id']} was successful.",
+                    notification_type="payment_success"
+                )
 
 stripe_service = StripeService()
