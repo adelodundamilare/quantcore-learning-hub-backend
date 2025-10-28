@@ -24,7 +24,8 @@ from app.schemas.billing import (
     CheckoutSessionCreate,
     CheckoutSession,
     BillingReportSchema,
-    TransactionTimeseriesReport
+    TransactionTimeseriesReport,
+    InvoiceStatusUpdate
 )
 from app.core.constants import RoleEnum, TimePeriod
 from app.models.billing import StripeCustomer
@@ -292,3 +293,13 @@ async def create_invoice_for_school(
         invoice_in=invoice_in,
     )
     return APIResponse(message="Invoice created successfully", data=invoice)
+
+@router.put("/admin/invoices/{invoice_id}/status", response_model=APIResponse[InvoiceSchema], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+async def update_invoice_status(
+    invoice_id: str,
+    status_in: InvoiceStatusUpdate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    invoice = await stripe_service.update_invoice_status(invoice_id, status_in.status.value)
+    return APIResponse(message="Invoice status updated successfully", data=invoice)

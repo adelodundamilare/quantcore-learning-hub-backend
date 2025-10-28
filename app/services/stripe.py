@@ -472,4 +472,7 @@ class StripeService:
 
         return result
 
+    async def update_invoice_status(self, invoice_id: str, status: str) -> stripe.Invoice:
+        return await self._make_request(stripe.Invoice.modify, invoice_id, status=status)
+
 stripe_service = StripeService()

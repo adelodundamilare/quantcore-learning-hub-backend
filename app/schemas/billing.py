@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List, Union
 from datetime import datetime
+from enum import Enum
 
 class StripeCustomerBase(BaseModel):
     pass
@@ -151,3 +152,13 @@ class TimeseriesDataPoint(BaseModel):
 
 class TransactionTimeseriesReport(BaseModel):
     data: List[TimeseriesDataPoint]
+
+class InvoiceStatusEnum(str, Enum):
+    draft = "draft"
+    open = "open"
+    paid = "paid"
+    uncollectible = "uncollectible"
+    void = "void"
+
+class InvoiceStatusUpdate(BaseModel):
+    status: InvoiceStatusEnum
