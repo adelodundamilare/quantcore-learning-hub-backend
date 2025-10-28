@@ -10,7 +10,9 @@ from app.models.billing import StripeCustomer, Subscription
 from app.crud.subscription import subscription as crud_subscription
 from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
 from app.crud.user import user as crud_user
-from app.schemas.billing import BillingReportSchema, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint
+from app.crud.role import role as crud_role
+from app.core.constants import RoleEnum
+from app.schemas.billing import BillingReportSchema, InvoiceCreate, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint
 from app.schemas.user import User as UserSchema
 from app.crud.school import school as crud_school
 from collections import defaultdict
@@ -49,6 +51,37 @@ class StripeService:
             email=user_model.email,
             name=user_model.full_name or user_model.email,
             metadata={"user_id": str(user_model.id)}
+        )
+        customer_in = StripeCustomerCreate(user_id=user_model.id, stripe_customer_id=customer.id)
+        new_db_customer = crud_stripe_customer.create(db, obj_in=customer_in)
+
+        db.refresh(user_model)
+
+        return new_db_customer
+
+    async def _get_or_create_customer_from_school_id(self, db: Session, school_id: int) -> StripeCustomer:
+        school = crud_school.get(db, id=school_id)
+        if not school:
+            raise HTTPException(status_code=404, detail="School not found in database.")
+
+        school_admin_role = crud_role.get_by_name(db, name=RoleEnum.SCHOOL_ADMIN)
+        if not school_admin_role:
+            raise HTTPException(status_code=500, detail="School admin role not found.")
+
+        school_admins = crud_user.get_users_by_school_and_role(db, school_id=school.id, role_id=school_admin_role.id)
+        if not school_admins:
+            raise HTTPException(status_code=404, detail="No school admin found for this school.")
+
+        user_model = school_admins[0]
+
+        if user_model.stripe_customer:
+            return user_model.stripe_customer
+
+        customer = await self._make_request(
+            stripe.Customer.create,
+            email=user_model.email,
+            name=user_model.full_name or user_model.email,
+            metadata={"user_id": str(user_model.id), "school_id": str(school.id)}
         )
         customer_in = StripeCustomerCreate(user_id=user_model.id, stripe_customer_id=customer.id)
         new_db_customer = crud_stripe_customer.create(db, obj_in=customer_in)
@@ -251,18 +284,24 @@ class StripeService:
 
         return TransactionTimeseriesReport(data=report_data)
 
-    async def create_invoice(self, stripe_customer_id: str, amount: float, currency: str, description: Optional[str] = None) -> stripe.Invoice:
-        unit_amount_cents = int(amount * 100)
+    async def create_invoice(self, db: Session, invoice_in: InvoiceCreate) -> stripe.Invoice:
+        school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice_in.school_id)
+
+        school_customer = crud_stripe_customer.get_by_user_id(db, user_id=invoice_in.school_id)
+        if not school_customer:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this school.")
+
+        unit_amount_cents = int(invoice_in.amount * 100)
         await self._make_request(
             stripe.InvoiceItem.create,
-            customer=stripe_customer_id,
+            customer=school_customer.stripe_customer_id,
             amount=unit_amount_cents,
-            currency=currency,
-            description=description
+            currency=invoice_in.currency,
+            description=invoice_in.description
         )
         return await self._make_request(
             stripe.Invoice.create,
-            customer=stripe_customer_id,
+            customer=school_customer.stripe_customer_id,
             collection_method='send_invoice',
             days_until_due=7,
             auto_advance=False

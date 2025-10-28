@@ -287,14 +287,8 @@ async def create_invoice_for_school(
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    school_customer = crud_stripe_customer.get_by_user_id(db, user_id=invoice_in.school_id)
-    if not school_customer:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stripe customer not found for this school.")
-
     invoice = await stripe_service.create_invoice(
-        stripe_customer_id=school_customer.stripe_customer_id,
-        amount=invoice_in.amount,
-        currency=invoice_in.currency,
-        description=invoice_in.description
+        db=db,
+        invoice_in=invoice_in,
     )
     return APIResponse(message="Invoice created successfully", data=invoice)
