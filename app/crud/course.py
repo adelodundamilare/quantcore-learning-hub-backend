@@ -5,6 +5,8 @@ from datetime import datetime
 
 from app.crud.base import CRUDBase
 from app.models.course import Course, course_teachers_association, course_students_association
+from app.models.course_enrollment import CourseEnrollment
+from app.models.curriculum import Curriculum
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseUpdate
 
@@ -15,7 +17,9 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         return db.query(Course).options(
             selectinload(Course.teachers),
             selectinload(Course.students),
-            selectinload(Course.school)
+            selectinload(Course.school),
+            selectinload(Course.curriculums).selectinload(Curriculum.lessons),
+            selectinload(Course.enrollments).selectinload(CourseEnrollment.lesson_progress)
         )
 
     def _query_active(self, db: Session):

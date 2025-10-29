@@ -2,8 +2,8 @@ from typing import List
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.course import Course
-from app.schemas.course import CourseCreate, CourseUpdate
+from app.models.course import Course as CourseModel
+from app.schemas.course import CourseCreate, CourseUpdate, Course as CourseSchema
 from app.schemas.user import UserContext, User
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
@@ -18,7 +18,7 @@ from app.models.course_enrollment import EnrollmentStatusEnum
 
 class CourseService:
 
-    def create_course(self, db: Session, course_in: CourseCreate, current_user_context: UserContext) -> Course:
+    def create_course(self, db: Session, course_in: CourseCreate, current_user_context: UserContext) -> CourseSchema:
         permission_helper.require_not_student(current_user_context, "Students cannot create courses.")
 
         school_id_for_course = permission_helper.get_school_id_for_operation(
@@ -47,9 +47,9 @@ class CourseService:
             link=f"/courses/{new_course.id}"
         )
 
-        return new_course
+        return CourseSchema.model_validate(new_course)
 
-    def update_course(self, db: Session, course_id: int, course_in: CourseUpdate, current_user_context: UserContext) -> Course:
+    def update_course(self, db: Session, course_id: int, course_in: CourseUpdate, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -57,9 +57,9 @@ class CourseService:
         permission_helper.require_course_management_permission(current_user_context, course)
 
         updated_course = crud_course.update(db, db_obj=course, obj_in=course_in)
-        return updated_course
+        return CourseSchema.model_validate(updated_course)
 
-    def delete_course(self, db: Session, course_id: int, current_user_context: UserContext) -> Course:
+    def delete_course(self, db: Session, course_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -67,9 +67,9 @@ class CourseService:
         permission_helper.require_course_management_permission(current_user_context, course)
 
         deleted_course = crud_course.remove(db, id=course_id)
-        return deleted_course
+        return CourseSchema.model_validate(deleted_course)
 
-    def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> Course:
+    def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -95,9 +95,9 @@ class CourseService:
             link=f"/courses/{course.id}"
         )
 
-        return course
+        return CourseSchema.model_validate(course)
 
-    def remove_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> Course:
+    def remove_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -121,9 +121,9 @@ class CourseService:
             link=f"/courses/{course.id}"
         )
 
-        return course
+        return CourseSchema.model_validate(course)
 
-    def enroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> Course:
+    def enroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -157,9 +157,9 @@ class CourseService:
             link=f"/courses/{course.id}"
         )
 
-        return course
+        return CourseSchema.model_validate(course)
 
-    def unenroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> Course:
+    def unenroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -187,15 +187,59 @@ class CourseService:
             link=f"/courses/{course.id}"
         )
 
-        return course
+        return CourseSchema.model_validate(course)
 
-    def get_course(self, db: Session, course_id: int, current_user_context: UserContext) -> Course:
-        course = crud_course.get(db, id=course_id)
-        if not course:
+    def _enrich_course_with_progress(self, db: Session, course_model: CourseModel, user_id: int) -> CourseSchema:
+        course_schema = CourseSchema.model_validate(course_model)
+
+        user_enrollment = next((e for e in course_model.enrollments if e.user_id == user_id), None)
+
+        if user_enrollment:
+            course_schema.user_progress_percentage = user_enrollment.progress_percentage
+            course_schema.user_enrollment_status = user_enrollment.status
+            course_schema.user_started_at = user_enrollment.started_at
+            course_schema.user_completed_at = user_enrollment.completed_at
+
+            lesson_progress_map = {lp.lesson_id: lp for lp in user_enrollment.lesson_progress}
+
+            for curriculum_schema in course_schema.curriculums:
+                for lesson_schema in curriculum_schema.lessons:
+                    lesson_progress = lesson_progress_map.get(lesson_schema.id)
+                    if lesson_progress:
+                        lesson_schema.is_completed = lesson_progress.is_completed
+                        lesson_schema.started_at = lesson_progress.started_at
+                        lesson_schema.completed_at = lesson_progress.completed_at
+                        lesson_schema.time_spent_seconds = lesson_progress.time_spent_seconds
+                        lesson_schema.last_accessed_at = lesson_progress.last_accessed_at
+                    else:
+                        lesson_schema.is_completed = False
+                        lesson_schema.started_at = None
+                        lesson_schema.completed_at = None
+                        lesson_schema.time_spent_seconds = 0
+                        lesson_schema.last_accessed_at = None
+        else:
+            course_schema.user_progress_percentage = 0
+            course_schema.user_enrollment_status = EnrollmentStatusEnum.NOT_STARTED
+            course_schema.user_started_at = None
+            course_schema.user_completed_at = None
+            for curriculum_schema in course_schema.curriculums:
+                for lesson_schema in curriculum_schema.lessons:
+                    lesson_schema.is_completed = False
+                    lesson_schema.started_at = None
+                    lesson_schema.completed_at = None
+                    lesson_schema.time_spent_seconds = 0
+                    lesson_schema.last_accessed_at = None
+
+        return course_schema
+
+    def get_course(self, db: Session, course_id: int, current_user_context: UserContext) -> CourseSchema:
+        course_model = crud_course.get(db, id=course_id)
+        if not course_model:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
 
-        permission_helper.require_course_view_permission(current_user_context, course)
-        return course
+        permission_helper.require_course_view_permission(current_user_context, course_model)
+
+        return self._enrich_course_with_progress(db, course_model, current_user_context.user.id)
 
     def get_course_teachers(self, db: Session, course_id: int, current_user_context: UserContext) -> List[User]:
         course = crud_course.get(db, id=course_id)
@@ -213,20 +257,33 @@ class CourseService:
         permission_helper.require_course_view_permission(current_user_context, course)
         return course.students
 
-    def get_all_courses(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Course]:
+    def get_all_courses(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[CourseSchema]:
         if permission_helper.is_super_admin(current_user_context):
-            return crud_course.get_multi(db, skip=skip, limit=limit)
+            courses = crud_course.get_multi(db, skip=skip, limit=limit)
         elif current_user_context.school:
-            return crud_course.get_courses_by_school(db, school_id=current_user_context.school.id, skip=skip, limit=limit)
+            courses = crud_course.get_courses_by_school(db, school_id=current_user_context.school.id, skip=skip, limit=limit)
         else:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view courses.")
 
-    def get_user_courses(self, db: Session, current_user_context: UserContext) -> List[Course]:
-        return crud_course.get_courses_by_user_id(db, user_id=current_user_context.user.id)
+        enriched_courses = []
+        for course_model in courses:
+            enriched_courses.append(self._enrich_course_with_progress(db, course_model, current_user_context.user.id))
+        return enriched_courses
 
-    def get_courses_by_school_id(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[Course]:
+    def get_user_courses(self, db: Session, current_user_context: UserContext) -> List[CourseSchema]:
+        courses = crud_course.get_courses_by_user_id(db, user_id=current_user_context.user.id)
+        enriched_courses = []
+        for course_model in courses:
+            enriched_courses.append(self._enrich_course_with_progress(db, course_model, current_user_context.user.id))
+        return enriched_courses
+
+    def get_courses_by_school_id(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[CourseSchema]:
         permission_helper.require_school_view_permission(current_user_context, school_id)
-        return crud_course.get_courses_by_school(db, school_id=school_id, skip=skip, limit=limit)
+        courses = crud_course.get_courses_by_school(db, school_id=school_id, skip=skip, limit=limit)
+        enriched_courses = []
+        for course_model in courses:
+            enriched_courses.append(self._enrich_course_with_progress(db, course_model, current_user_context.user.id))
+        return enriched_courses
 
 
 course_service = CourseService()
