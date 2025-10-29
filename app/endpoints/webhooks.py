@@ -34,6 +34,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
         await stripe_service.handle_subscription_deleted_event(db, event)
     elif event['type'] == 'invoice.paid':
         await stripe_service.handle_invoice_paid_event(db, event)
+    elif event['type'] == 'checkout.session.completed':
+        await stripe_service.handle_checkout_session_completed_event(db, event)
     else:
         print(f"Unhandled event type {event['type']}")
 

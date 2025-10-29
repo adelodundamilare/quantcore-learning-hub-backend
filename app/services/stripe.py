@@ -497,6 +497,66 @@ class StripeService:
                     notification_type="payment_success"
                 )
 
+    async def handle_checkout_session_completed_event(self, db: Session, event: stripe.Event):
+        session = event['data']['object']
+        customer_id = session.get('customer')
+        subscription_id = session.get('subscription')
+
+        if not customer_id or not subscription_id:
+            print(f"Checkout session {session.id} missing customer or subscription ID.")
+            return
+
+        stripe_customer = crud_stripe_customer.get_by_stripe_customer_id(db, stripe_customer_id=customer_id)
+        if not stripe_customer:
+            print(f"Stripe customer {customer_id} not found in DB.")
+            return
+
+        user = crud_user.get(db, id=stripe_customer.user_id)
+        if not user:
+            print(f"User for stripe customer {customer_id} not found in DB.")
+            return
+
+        stripe_subscription = await self._make_request(stripe.Subscription.retrieve, subscription_id)
+
+        db_subscription = crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription_id)
+
+        price_ids = [item['price']['id'] for item in stripe_subscription['items']['data']]
+
+        if db_subscription:
+            update_data = {
+                "status": stripe_subscription.status,
+                "stripe_price_id": ",".join(price_ids),
+                "current_period_start": datetime.fromtimestamp(stripe_subscription.current_period_start),
+                "current_period_end": datetime.fromtimestamp(stripe_subscription.current_period_end),
+                "cancel_at_period_end": stripe_subscription.cancel_at_period_end,
+            }
+            crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
+        else:
+            db_subscription = Subscription(
+                user_id=user.id,
+                stripe_customer_id=customer_id,
+                stripe_subscription_id=subscription_id,
+                stripe_price_id=",".join(price_ids),
+                status=stripe_subscription.status,
+                current_period_start=datetime.fromtimestamp(stripe_subscription.current_period_start),
+                current_period_end=datetime.fromtimestamp(stripe_subscription.current_period_end),
+                cancel_at_period_end=stripe_subscription.cancel_at_period_end,
+            )
+            crud_subscription.create(db, obj_in=db_subscription)
+
+        EmailService.send_email(
+            to_email=user.email,
+            subject="Welcome to QuantCore Learning Hub!",
+            template_name="welcome-verify.html",
+            template_context={'user_name': user.full_name}
+        )
+        notification_service.create_notification(
+            db,
+            user_id=user.id,
+            message="Your subscription is now active! Welcome to QuantCore Learning Hub.",
+            notification_type="subscription_activated"
+        )
+
     async def handle_subscription_created_event(self, db: Session, event: stripe.Event):
         subscription = event['data']['object']
         customer_id = subscription['customer']
