@@ -9,8 +9,11 @@ from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.school import school as crud_school
 from app.crud.course import course as crud_course
+from app.crud.course_enrollment import course_enrollment as crud_enrollment
 from app.services.notification import notification_service
 from app.utils.permission import PermissionHelper as permission_helper
+from app.schemas.course_enrollment import CourseEnrollmentCreate
+from app.models.course_enrollment import EnrollmentStatusEnum
 
 
 class CourseService:
@@ -138,6 +141,14 @@ class CourseService:
 
         crud_course.enroll_student_in_course(db, course=course, user=student_user)
 
+        enrollment_in = CourseEnrollmentCreate(
+            user_id=user_id,
+            course_id=course_id,
+            status=EnrollmentStatusEnum.NOT_STARTED,
+            progress_percentage=0
+        )
+        crud_enrollment.create(db, obj_in=enrollment_in)
+
         notification_service.create_notification(
             db,
             user_id=student_user.id,
@@ -163,6 +174,10 @@ class CourseService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not enrolled in this course.")
 
         crud_course.unenroll_student_from_course(db, course=course, user=student_user)
+
+        enrollment = crud_enrollment.get_by_user_and_course(db, user_id=user_id, course_id=course_id)
+        if enrollment:
+            crud_enrollment.remove(db, id=enrollment.id)
 
         notification_service.create_notification(
             db,
