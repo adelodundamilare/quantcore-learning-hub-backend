@@ -82,7 +82,7 @@ class CourseProgressService:
         if not lesson:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found.")
 
-        course = lesson.course if lesson.course else (lesson.curriculum.course if lesson.curriculum else None)
+        course = lesson.curriculum.course if lesson.curriculum else None
         if not course:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lesson is not associated with a course.")
 
@@ -125,7 +125,7 @@ class CourseProgressService:
         if not lesson:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found.")
 
-        course = lesson.course if lesson.course else (lesson.curriculum.course if lesson.curriculum else None)
+        course = lesson.curriculum.course if lesson.curriculum else None
         if not course:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lesson is not associated with a course.")
 

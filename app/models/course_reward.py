@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, ForeignKey, DateTime, Text, func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -14,7 +14,7 @@ class CourseReward(Base):
     points = Column(Integer, default=0)
     awarded_at = Column(DateTime, nullable=False)
     deleted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
 
     enrollment = relationship("CourseEnrollment", back_populates="rewards")
