@@ -11,6 +11,7 @@ from app.schemas.billing import (
     StripeCustomerSchema,
     SubscriptionCreate,
     SubscriptionSchema,
+    SubscriptionDetailSchema,
     PaymentMethodAdd,
     PaymentMethodSchema,
     InvoiceSchema,
@@ -104,7 +105,7 @@ async def create_subscription(
     )
     return APIResponse(message="Subscription created successfully", data=subscription)
 
-@router.get("/subscriptions", response_model=APIResponse[List[SubscriptionSchema]])
+@router.get("/subscriptions", response_model=APIResponse[List[SubscriptionDetailSchema]])
 async def get_subscriptions(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)

@@ -162,3 +162,12 @@ class InvoiceStatusEnum(str, Enum):
 
 class InvoiceStatusUpdate(BaseModel):
     status: InvoiceStatusEnum
+
+class SubscriptionDetailSchema(BaseModel):
+    start_date: datetime
+    end_date: datetime
+    plan_name: str
+    price: float
+    payment_method: str
+    invoice_no: str
+    status: str
