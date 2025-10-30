@@ -1,6 +1,7 @@
+import asyncio
 import os
 import httpx
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 
@@ -214,5 +215,45 @@ class PolygonService:
 
     async def get_stock_news(self, symbol: str, limit: int = 10) -> List[dict]:
         return await self.get_market_news(limit=limit, symbols=symbol.upper())
+
+    async def get_multi_stock_details(self, tickers: List[str]) -> Dict[str, dict]:
+        if not tickers:
+            return {}
+
+        unique_tickers = list(set(tickers))
+
+        quote_tasks = [self.get_latest_quote(ticker) for ticker in unique_tickers]
+        detail_tasks = [self.get_company_details(ticker) for ticker in unique_tickers]
+
+        quotes = await asyncio.gather(*quote_tasks)
+        details = await asyncio.gather(*detail_tasks)
+
+        combined_data = {}
+        for i, ticker in enumerate(unique_tickers):
+            quote_data = quotes[i]
+            company_details = details[i]
+
+            combined_details = {
+                "symbol": ticker,
+                "name": company_details.get("name", ticker) if company_details else ticker,
+                "price": quote_data.get("price") if quote_data else None,
+                "change": quote_data.get("change") if quote_data else None,
+                "change_percent": quote_data.get("change_percent") if quote_data else None,
+                "high": quote_data.get("high") if quote_data else None,
+                "low": quote_data.get("low") if quote_data else None,
+                "open": quote_data.get("open") if quote_data else None,
+                "volume": quote_data.get("volume") if quote_data else None,
+                "avg_volume": None,
+                "market_cap": company_details.get("market_cap") if company_details else None,
+                "pe_ratio": None,
+                "description": company_details.get("description") if company_details else None,
+                "ceo": company_details.get("ceo") if company_details else None,
+                "employees": company_details.get("employees") if company_details else None,
+                "headquarters": company_details.get("headquarters") if company_details else None,
+                "founded": company_details.get("founded") if company_details else None,
+                "sparkline_data": None
+            }
+            combined_data[ticker] = combined_details
+        return combined_data
 
 polygon_service = PolygonService()
