@@ -17,6 +17,8 @@ from app.schemas.user import User as UserSchema, UserContext
 from app.crud.school import school as crud_school
 from app.services.email import EmailService
 from app.services.notification import notification_service
+from app.crud.stripe_product import stripe_product as crud_stripe_product
+from app.crud.stripe_price import stripe_price as crud_stripe_price
 from collections import defaultdict
 from enum import Enum
 
@@ -351,33 +353,34 @@ class StripeService:
         ]
 
         return TransactionTimeseriesReport(data=report_data)
+
     async def create_invoice(self, db: Session, invoice_in: InvoiceCreate) -> stripe.Invoice:
-            school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice_in.school_id)
+        school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice_in.school_id)
 
-            unit_amount_cents = int(invoice_in.amount * 100)
+        unit_amount_cents = int(invoice_in.amount * 100)
 
-            invoice = await self._make_request(
-                stripe.Invoice.create,
-                customer=school_customer.stripe_customer_id,
-                collection_method='send_invoice',
-                days_until_due=7
-            )
+        invoice = await self._make_request(
+            stripe.Invoice.create,
+            customer=school_customer.stripe_customer_id,
+            collection_method='send_invoice',
+            days_until_due=7
+        )
 
-            await self._make_request(
-                stripe.InvoiceItem.create,
-                customer=school_customer.stripe_customer_id,
-                invoice=invoice.id,
-                amount=unit_amount_cents,
-                currency=invoice_in.currency,
-                description=invoice_in.description
-            )
+        await self._make_request(
+            stripe.InvoiceItem.create,
+            customer=school_customer.stripe_customer_id,
+            invoice=invoice.id,
+            amount=unit_amount_cents,
+            currency=invoice_in.currency,
+            description=invoice_in.description
+        )
 
-            finalized_invoice = await self._make_request(
-                stripe.Invoice.finalize_invoice,
-                invoice.id
-            )
+        finalized_invoice = await self._make_request(
+            stripe.Invoice.finalize_invoice,
+            invoice.id
+        )
 
-            return finalized_invoice
+        return finalized_invoice
 
     async def create_product(self, name: str, description: Optional[str] = None, unit_amount: int = None, currency: str = "usd", recurring_interval: str = "month", metadata: Optional[Dict[str, str]] = None) -> stripe.Product:
         product_data = {"name": name}
@@ -596,5 +599,67 @@ class StripeService:
                 "status": "canceled"
             }
             crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
+
+    async def handle_product_created_event(self, db: Session, event: stripe.Event):
+        product = event['data']['object']
+        db_product = crud_stripe_product.get_by_stripe_product_id(db, stripe_product_id=product['id'])
+        if db_product:
+            crud_stripe_product.update(db, db_obj=db_product, obj_in={
+                "name": product['name'],
+                "description": product.get('description'),
+                "active": product['active']
+            })
+        else:
+            product_in = {
+                "stripe_product_id": product['id'],
+                "name": product['name'],
+                "description": product.get('description'),
+                "active": product['active']
+            }
+            crud_stripe_product.create(db, obj_in=product_in)
+
+    async def handle_price_created_event(self, db: Session, event: stripe.Event):
+        price = event['data']['object']
+        db_price = crud_stripe_price.get_by_stripe_price_id(db, stripe_price_id=price['id'])
+        if db_price:
+            crud_stripe_price.update(db, db_obj=db_price, obj_in={
+                "stripe_product_id": price['product'],
+                "unit_amount": price['unit_amount'],
+                "currency": price['currency'],
+                "recurring_interval": price['recurring']['interval'] if price.get('recurring') else None,
+                "active": price['active']
+            })
+        else:
+            price_in = {
+                "stripe_price_id": price['id'],
+                "stripe_product_id": price['product'],
+                "unit_amount": price['unit_amount'],
+                "currency": price['currency'],
+                "recurring_interval": price['recurring']['interval'] if price.get('recurring') else None,
+                "active": price['active']
+            }
+            crud_stripe_price.create(db, obj_in=price_in)
+
+    async def handle_customer_created_event(self, db: Session, event: stripe.Event):
+        customer = event['data']['object']
+        user_id = customer.get('metadata', {}).get('user_id')
+
+        if not user_id:
+            user = crud_user.get_by_email(db, email=customer['email'])
+            if not user:
+                print(f"User with email {customer['email']} not found.")
+                return
+            user_id = user.id
+        else:
+            user_id = int(user_id)
+
+        db_stripe_customer = crud_stripe_customer.get_by_user_id(db, user_id=user_id)
+        if db_stripe_customer:
+            if db_stripe_customer.stripe_customer_id != customer['id']:
+                crud_stripe_customer.update(db, db_obj=db_stripe_customer, obj_in={"stripe_customer_id": customer['id']})
+            return
+
+        customer_in = StripeCustomerCreate(user_id=user_id, stripe_customer_id=customer['id'])
+        crud_stripe_customer.create(db, obj_in=customer_in)
 
 stripe_service = StripeService()

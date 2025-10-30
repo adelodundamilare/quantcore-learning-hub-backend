@@ -24,8 +24,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
     if event['type'] == 'customer.created':
-        customer = event['data']['object']
-        print(f"Customer created: {customer['id']}")
+        await stripe_service.handle_customer_created_event(db, event)
     elif event['type'] == 'customer.subscription.created':
         await stripe_service.handle_subscription_created_event(db, event)
     elif event['type'] == 'customer.subscription.updated':
@@ -36,6 +35,10 @@ async def stripe_webhook(request: Request, db: Session = Depends(deps.get_db)):
         await stripe_service.handle_invoice_paid_event(db, event)
     elif event['type'] == 'checkout.session.completed':
         await stripe_service.handle_checkout_session_completed_event(db, event)
+    elif event['type'] == 'product.created':
+        await stripe_service.handle_product_created_event(db, event)
+    elif event['type'] == 'price.created':
+        await stripe_service.handle_price_created_event(db, event)
     else:
         print(f"Unhandled event type {event['type']}")
 
