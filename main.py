@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks
+from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks, stock_options
 from app.realtime import websockets as websocket_events
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
@@ -53,6 +53,7 @@ app.include_router(billing.router, prefix="/billing", tags=["Billing"])
 trading_router = trading.create_trading_router()
 app.include_router(trading_router, prefix="/trading", tags=["Trading"])
 app.include_router(webhooks.router, tags=["Webhooks"])
+app.include_router(stock_options.router, prefix="/stock-options", tags=["Stock Options"])
 
 async def _run_leaderboard_precomputation():
     while True:
