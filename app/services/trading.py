@@ -12,6 +12,7 @@ import asyncio
 from app.crud.user import user as user_crud
 from app.crud.role import role as user_role
 from app.schemas.trading import (
+    PortfolioItemSchema,
     TradingAccountSummary,
     WatchlistStockSchema,
     UserWatchlistCreate,
@@ -451,6 +452,55 @@ class TradingService:
         )
 
         return [PortfolioPositionSchema.model_validate(p) for p in positions]
+
+    async def get_portfolio_position_by_id(
+        self,
+        db: Session,
+        user_id: int,
+        position_id: int
+    ) -> PortfolioItemSchema:
+        position = crud_portfolio_position.get(db, id=position_id)
+
+        if not position or position.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Portfolio position not found"
+            )
+
+        detail = (await polygon_service.get_multi_stock_details([position.symbol])).get(position.symbol, {})
+        current_price = Decimal(str(detail.get("price", 0.0)))
+
+        cost_value = Decimal(str(position.quantity)) * Decimal(str(position.average_price))
+        current_value = Decimal(str(position.quantity)) * current_price
+        unrealized_profit_loss = current_value - cost_value
+        unrealized_profit_loss_percent = (unrealized_profit_loss / cost_value * 100) if cost_value else Decimal("0.00")
+
+        all_positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)
+        all_symbols = [p.symbol for p in all_positions]
+        all_stock_details_map = await polygon_service.get_multi_stock_details(all_symbols)
+
+        total_portfolio_market_value = Decimal("0.00")
+        for p in all_positions:
+            detail = all_stock_details_map.get(p.symbol, {})
+            total_portfolio_market_value += Decimal(str(p.quantity)) * Decimal(str(detail.get("price", 0.0)))
+
+        percentage_of_portfolio = (current_value / total_portfolio_market_value * 100) if total_portfolio_market_value else Decimal("0.00")
+
+        return PortfolioItemSchema(
+            id=position.id,
+            user_id=position.user_id,
+            symbol=position.symbol,
+            quantity=position.quantity,
+            average_price=float(position.average_price),
+            cost_value=float(cost_value),
+            current_price=float(current_price),
+            current_value=float(current_value),
+            unrealized_profit_loss=float(unrealized_profit_loss),
+            unrealized_profit_loss_percent=float(unrealized_profit_loss_percent),
+            percentage_of_portfolio=float(percentage_of_portfolio),
+            created_at=position.created_at,
+            updated_at=position.updated_at
+        )
 
     # ============ TRADING METHODS ============
 

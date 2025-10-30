@@ -134,6 +134,23 @@ class PortfolioPositionCreate(BaseModel):
 class PortfolioPositionUpdate(BaseModel):
     pass
 
+class PortfolioItemSchema(BaseModel):
+    id: int
+    user_id: int
+    symbol: str
+    quantity: int
+    average_price: float
+    cost_value: float = 0.0
+    current_price: float = 0.0
+    current_value: float = 0.0
+    unrealized_profit_loss: float = 0.0
+    unrealized_profit_loss_percent: float = 0.0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    percentage_of_portfolio: float = 0.0
+
+    model_config = ConfigDict(from_attributes=True)
+
 class TradeOrderBase(BaseModel):
     symbol: str
     order_type: OrderTypeEnum

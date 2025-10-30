@@ -10,6 +10,7 @@ from app.schemas.user import UserContext
 from app.schemas.trading import (
     HistoricalDataPointSchema,
     HistoricalDataSchema,
+    PortfolioPositionSchema,
     StockDetailsSchema,
     StockQuoteSchema,
     StockSchema,
@@ -17,7 +18,7 @@ from app.schemas.trading import (
     UserWatchlistUpdate,
     UserWatchlistSchema,
     AccountBalanceSchema,
-    PortfolioPositionSchema,
+    PortfolioItemSchema,
     TradeOrderCreate,
     TradeOrder,
     CompanyDetailsSchema,
@@ -143,6 +144,22 @@ def create_trading_router():
         return APIResponse(
             message="User portfolio retrieved successfully",
             data=portfolio
+        )
+
+    @router.get("/portfolio/{position_id}", response_model=APIResponse[PortfolioItemSchema])
+    async def get_portfolio_position_by_id(
+        position_id: int,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        position = await trading_service.get_portfolio_position_by_id(
+            db,
+            user_id=context.user.id,
+            position_id=position_id
+        )
+        return APIResponse(
+            message="Portfolio position retrieved successfully",
+            data=position
         )
 
     @router.post("/watchlists", response_model=APIResponse[UserWatchlistSchema], status_code=status.HTTP_201_CREATED)
