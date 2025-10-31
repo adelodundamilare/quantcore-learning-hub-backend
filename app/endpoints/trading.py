@@ -118,11 +118,11 @@ def create_trading_router():
 
 
     @router.get("/account/balance", response_model=APIResponse[AccountBalanceSchema])
-    def get_account_balance(
+    async def get_account_balance(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context)
     ):
-        balance = trading_service.get_account_balance(db, user_id=context.user.id)
+        balance = await trading_service.get_account_balance(db, user_id=context.user.id)
         return APIResponse(
             message="Account balance retrieved successfully",
             data=balance

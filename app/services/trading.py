@@ -335,7 +335,7 @@ class TradingService:
 
     # ============ ACCOUNT BALANCE METHODS ============
 
-    def get_account_balance(
+    async def get_account_balance(
         self,
         db: Session,
         user_id: int
@@ -348,7 +348,37 @@ class TradingService:
                 obj_in={"user_id": user_id, "balance": Decimal("0.00")}
             )
 
-        return AccountBalanceSchema.model_validate(account)
+        available_balance = Decimal(str(account.balance))
+        amount_invested = Decimal("0.00")
+        total_amount = Decimal("0.00")
+
+        positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)
+
+        if positions:
+            symbols = [p.symbol for p in positions]
+            price_tasks = [polygon_service.get_latest_quote(s) for s in symbols]
+            price_results = await asyncio.gather(*price_tasks, return_exceptions=True)
+
+            for pos, quote_result in zip(positions, price_results):
+                if isinstance(quote_result, Exception) or not quote_result or not quote_result.get('price'):
+                    logger.warning(f"Could not fetch price for {pos.symbol}. Skipping from invested amount calculation.")
+                    continue
+
+                current_price = Decimal(str(quote_result['price']))
+                amount_invested += Decimal(str(pos.quantity)) * current_price
+
+        total_amount = available_balance + amount_invested
+
+        return AccountBalanceSchema(
+            id=account.id,
+            user_id=user_id,
+            balance=float(available_balance),
+            available_balance=float(available_balance),
+            amount_invested=float(amount_invested),
+            total_amount=float(total_amount),
+            created_at=account.created_at,
+            updated_at=account.updated_at
+        )
 
     async def add_funds_to_student_account(
         self,
@@ -864,7 +894,7 @@ class TradingService:
             starting_capital = Decimal(str(fund_additions[0].amount))
             total_funds_added = sum(Decimal(str(t.amount)) for t in fund_additions[1:])
 
-        account_balance = self.get_account_balance(db, user_id=user_id)
+        account_balance = await self.get_account_balance(db, user_id=user_id)
         current_cash_balance = Decimal(str(account_balance.balance))
 
         positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)

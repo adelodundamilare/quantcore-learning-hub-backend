@@ -100,6 +100,9 @@ class AccountBalanceSchema(BaseModel):
     id: int
     user_id: int
     balance: float
+    available_balance: Optional[float] = None
+    amount_invested: Optional[float] = None
+    total_amount: Optional[float] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
