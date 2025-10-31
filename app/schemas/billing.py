@@ -175,3 +175,8 @@ class SubscriptionDetailSchema(BaseModel):
 
 class SubscriptionAutoRenew(BaseModel):
     auto_renew: bool
+
+
+class PortalSession(BaseModel):
+    id: str
+    url: str

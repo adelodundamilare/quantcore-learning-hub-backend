@@ -24,6 +24,7 @@ from app.schemas.billing import (
     BillingHistoryInvoiceSchema,
     CheckoutSessionCreate,
     CheckoutSession,
+    PortalSession,
     BillingReportSchema,
     TransactionTimeseriesReport,
     InvoiceStatusUpdate,
@@ -173,6 +174,15 @@ async def create_checkout_session(
         cancel_url=session_in.cancel_url
     )
     return APIResponse(message="Checkout session created successfully", data=checkout_session)
+
+
+@router.post("/manage-subscription", response_model=APIResponse[PortalSession])
+async def manage_subscription(
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    portal_session = await stripe_service.create_customer_portal_session(db, context)
+    return APIResponse(message="Customer portal session created successfully", data=portal_session)
 
 @router.post("/admin/products", response_model=APIResponse[StripeProductSchema], status_code=status.HTTP_201_CREATED, dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 async def create_stripe_product(

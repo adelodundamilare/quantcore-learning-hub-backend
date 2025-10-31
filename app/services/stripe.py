@@ -285,6 +285,15 @@ class StripeService:
         }
         return crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
 
+    async def create_customer_portal_session(self, db: Session, context: UserContext) -> stripe.billing_portal.Session:
+        customer = await self._get_or_create_customer(db, context.user)
+        portal_session = await self._make_request(
+            stripe.billing_portal.Session.create,
+            customer=customer.stripe_customer_id,
+            return_url=settings.STRIPE_PORTAL_RETURN_URL
+        )
+        return portal_session
+
     async def get_invoices(self, db: Session, context: UserContext) -> List[BillingHistoryInvoiceSchema]:
         user_model = context.user
 
@@ -677,8 +686,10 @@ class StripeService:
         subscription = event['data']['object']
         db_subscription = crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription['id'])
         if db_subscription:
+            price_ids = [item['price']['id'] for item in subscription['items']['data']]
             update_data = {
                 "status": subscription['status'],
+                "stripe_price_id": ",".join(price_ids),
                 "current_period_start": datetime.fromtimestamp(subscription['current_period_start']),
                 "current_period_end": datetime.fromtimestamp(subscription['current_period_end']),
                 "cancel_at_period_end": subscription['cancel_at_period_end'],

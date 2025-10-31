@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     POLYGON_API_KEY: str
     STRIPE_SECRET_KEY: str
     STRIPE_WEBHOOK_SECRET: str
+    STRIPE_PORTAL_RETURN_URL: str = "http://localhost:3000/billing/return"
 
     # OAuth2
     GOOGLE_CLIENT_ID: Optional[str] = None
