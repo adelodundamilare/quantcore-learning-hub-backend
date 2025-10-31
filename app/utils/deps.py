@@ -16,6 +16,7 @@ from app.schemas.user import UserContext
 from app.schemas.token import TokenPayload
 from app.schemas.user import UserContext
 from app.core.constants import PermissionEnum, RoleEnum
+from app.utils.permission import permission_helper
 
 from app.crud.token_denylist import token_denylist as token_denylist_crud
 from app.schemas.token import TokenPayload
@@ -70,6 +71,11 @@ def require_role(role_name: RoleEnum):
                 detail=f"You do not have the required role: {role_name.value}."
             )
     return _verify_role
+
+def require_billing_access():
+    def _verify_access(context: UserContext = Depends(get_current_user_with_context)):
+        permission_helper.require_billing_permission(context)
+    return _verify_access
 
 async def get_current_user(
     db: Session = Depends(get_db),

@@ -172,7 +172,7 @@ class StripeService:
     async def get_subscription(self, db: Session, subscription_id: str) -> Optional[Subscription]:
         return crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription_id)
 
-    async def get_subscriptions(self, db: Session, user: UserSchema, status: str = 'active') -> List[SubscriptionDetailSchema]:
+    async def get_subscriptions(self, db: Session, user: UserSchema, status: str = 'all') -> List[SubscriptionDetailSchema]:
         user_model = crud_user.get(db, id=user.id)
         if not user_model or not user_model.stripe_customer:
             return []
@@ -182,25 +182,21 @@ class StripeService:
                 stripe.Subscription.list,
                 customer=user_model.stripe_customer.stripe_customer_id,
                 status=status,
-                expand=["data.latest_invoice", "data.default_payment_method"]
+                expand=["data.latest_invoice", "data.default_payment_method", "data.items.data.price"]
             )
 
             product_ids = set()
-            for stripe_sub in stripe_subscriptions.data:
-                items_data = getattr(stripe_sub, 'items', {})
-                if hasattr(items_data, 'data'):
-                    for item in items_data.data:
-                        if hasattr(item, 'price') and item.price and hasattr(item.price, 'product'):
-                            product_ids.add(item.price.product)
+            if stripe_subscriptions and stripe_subscriptions.data:
+                for stripe_sub in stripe_subscriptions.data:
+                    if stripe_sub.get('items') and stripe_sub['items'].get('data'):
+                        for item in stripe_sub['items']['data']:
+                            if item.get('price') and item['price'].get('product'):
+                                product_ids.add(item['price']['product'])
 
             product_map = {}
             if product_ids:
-                for product_id in product_ids:
-                    try:
-                        product = await self._make_request(stripe.Product.retrieve, product_id)
-                        product_map[product.id] = product.name
-                    except Exception:
-                        pass
+                products = await self._make_request(stripe.Product.list, ids=list(product_ids))
+                product_map = {p.id: p.name for p in products.data}
 
         except Exception as e:
             import logging
@@ -213,38 +209,26 @@ class StripeService:
             try:
                 plan_name = "N/A"
                 price = 0.0
-                start_date = None
-                end_date = None
 
-                items_data = getattr(stripe_sub, 'items', {})
-                if hasattr(items_data, 'data') and items_data.data:
-                    first_item = items_data.data[0]
-
-                    if hasattr(first_item, 'current_period_start') and first_item.current_period_start:
-                        start_date = datetime.fromtimestamp(first_item.current_period_start)
-                    if hasattr(first_item, 'current_period_end') and first_item.current_period_end:
-                        end_date = datetime.fromtimestamp(first_item.current_period_end)
-
-                    if hasattr(first_item, 'price') and first_item.price:
-                        if hasattr(first_item.price, 'product') and first_item.price.product:
-                            plan_name = product_map.get(first_item.price.product, "N/A")
-                        if hasattr(first_item.price, 'unit_amount') and first_item.price.unit_amount:
-                            price = first_item.price.unit_amount / 100
-
-                if not start_date or not end_date:
-                    continue
+                if stripe_sub.get('items') and stripe_sub['items'].get('data'):
+                    first_item = stripe_sub['items']['data'][0]
+                    if first_item.get('price') and first_item['price'].get('product'):
+                        plan_name = product_map.get(first_item['price']['product'], "N/A")
+                    if first_item.get('price') and first_item['price'].get('unit_amount') is not None:
+                        price = first_item['price']['unit_amount'] / 100
 
                 payment_method = "N/A"
-                if hasattr(stripe_sub, 'default_payment_method') and stripe_sub.default_payment_method:
-                    pm = stripe_sub.default_payment_method
-                    if isinstance(pm, stripe.PaymentMethod) and pm.type == 'card' and pm.card:
+                if stripe_sub.get('default_payment_method') and isinstance(stripe_sub['default_payment_method'], stripe.PaymentMethod):
+                    pm = stripe_sub['default_payment_method']
+                    if pm.type == 'card' and pm.card:
                         payment_method = f"{pm.card.brand.capitalize()} **** {pm.card.last4}"
 
                 invoice_no = "N/A"
-                if hasattr(stripe_sub, 'latest_invoice') and stripe_sub.latest_invoice:
-                    inv = stripe_sub.latest_invoice
-                    if isinstance(inv, stripe.Invoice):
-                        invoice_no = inv.number or inv.id
+                if stripe_sub.get('latest_invoice') and isinstance(stripe_sub['latest_invoice'], stripe.Invoice):
+                    invoice_no = stripe_sub['latest_invoice'].number or stripe_sub['latest_invoice'].id
+
+                start_date = datetime.fromtimestamp(first_item['current_period_start'])
+                end_date = datetime.fromtimestamp(first_item['current_period_end'])
 
                 subscription_details.append(
                     SubscriptionDetailSchema(
@@ -263,6 +247,7 @@ class StripeService:
                 logger.error(f"Error processing subscription {stripe_sub.id}: {e}", exc_info=True)
 
         return subscription_details
+
     async def cancel_subscription(self, db: Session, subscription_id: str) -> Subscription:
         db_subscription = await self.get_subscription(db, subscription_id)
         if not db_subscription:

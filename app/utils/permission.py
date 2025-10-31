@@ -158,5 +158,13 @@ class PermissionHelper:
                 )
             return context.school.id
 
+    @staticmethod
+    def require_billing_permission(context: UserContext):
+        if PermissionHelper.is_student(context) or PermissionHelper.is_teacher(context):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Billing features are not available for your role."
+            )
+
 
 permission_helper = PermissionHelper()

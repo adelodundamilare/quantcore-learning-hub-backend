@@ -31,10 +31,8 @@ from app.schemas.billing import (
     SubscriptionAutoRenew
 )
 from app.core.constants import RoleEnum, TimePeriod
-from app.models.billing import StripeCustomer
-from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(deps.require_billing_access())])
 
 @router.post("/customer", response_model=APIResponse[StripeCustomerSchema], status_code=status.HTTP_201_CREATED)
 async def create_stripe_customer(
@@ -111,7 +109,7 @@ async def create_subscription(
 async def get_subscriptions(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
-    status: str = Query('active', enum=['active', 'canceled', 'all'])
+    status: str = Query('all', enum=['active', 'canceled', 'all'])
 ):
     subscriptions = await stripe_service.get_subscriptions(db=db, user=context.user, status=status)
     return APIResponse(message="Subscriptions retrieved successfully", data=subscriptions)
@@ -142,8 +140,8 @@ async def update_subscription_auto_renewal(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     subscription = await stripe_service.update_subscription_auto_renewal(
-        db=db, 
-        subscription_id=subscription_id, 
+        db=db,
+        subscription_id=subscription_id,
         auto_renew=auto_renew_in.auto_renew,
         context=context
     )
