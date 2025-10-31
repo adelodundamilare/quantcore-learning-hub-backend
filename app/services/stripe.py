@@ -172,66 +172,79 @@ class StripeService:
     async def get_subscription(self, db: Session, subscription_id: str) -> Optional[Subscription]:
         return crud_subscription.get_by_stripe_subscription_id(db, stripe_subscription_id=subscription_id)
 
-    async def get_subscriptions(self, db: Session, user: UserSchema) -> List[SubscriptionDetailSchema]:
+    async def get_subscriptions(self, db: Session, user: UserSchema, status: str = 'active') -> List[SubscriptionDetailSchema]:
         user_model = crud_user.get(db, id=user.id)
         if not user_model or not user_model.stripe_customer:
             return []
 
-        db_subscriptions = crud_subscription.get_multi_by_user(db, user_id=user_model.id)
-        if not db_subscriptions:
+        try:
+            stripe_subscriptions = await self._make_request(
+                stripe.Subscription.list,
+                customer=user_model.stripe_customer.stripe_customer_id,
+                status=status,
+                expand=["data.latest_invoice", "data.default_payment_method"]
+            )
+
+            product_ids = set()
+            for stripe_sub in stripe_subscriptions.data:
+                items_data = getattr(stripe_sub, 'items', {})
+                if hasattr(items_data, 'data'):
+                    for item in items_data.data:
+                        if hasattr(item, 'price') and item.price and hasattr(item.price, 'product'):
+                            product_ids.add(item.price.product)
+
+            product_map = {}
+            if product_ids:
+                for product_id in product_ids:
+                    try:
+                        product = await self._make_request(stripe.Product.retrieve, product_id)
+                        product_map[product.id] = product.name
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Could not retrieve subscriptions for customer {user_model.stripe_customer.stripe_customer_id}: {e}", exc_info=True)
             return []
 
         subscription_details = []
-        for db_sub in db_subscriptions:
+        for stripe_sub in stripe_subscriptions.data:
             try:
-                stripe_sub = await self._make_request(
-                    stripe.Subscription.retrieve,
-                    db_sub.stripe_subscription_id,
-                    expand=["latest_invoice", "default_payment_method"]
-                )
-
                 plan_name = "N/A"
                 price = 0.0
                 start_date = None
                 end_date = None
 
-                if hasattr(stripe_sub, 'items') and stripe_sub.get('items') and stripe_sub['items'].get('data'):
-                    first_item = stripe_sub['items']['data'][0]
+                items_data = getattr(stripe_sub, 'items', {})
+                if hasattr(items_data, 'data') and items_data.data:
+                    first_item = items_data.data[0]
 
-                    price_obj = first_item.get('price')
-                    if price_obj:
-                        if price_obj.get('unit_amount'):
-                            price = price_obj['unit_amount'] / 100
-                        if price_obj.get('product'):
-                            product = await self._make_request(stripe.Product.retrieve, price_obj['product'])
-                            plan_name = product.get('name', 'Unnamed Plan')
+                    if hasattr(first_item, 'current_period_start') and first_item.current_period_start:
+                        start_date = datetime.fromtimestamp(first_item.current_period_start)
+                    if hasattr(first_item, 'current_period_end') and first_item.current_period_end:
+                        end_date = datetime.fromtimestamp(first_item.current_period_end)
 
-                    if first_item.get('current_period_start'):
-                        start_date = datetime.fromtimestamp(first_item['current_period_start'])
-                    if first_item.get('current_period_end'):
-                        end_date = datetime.fromtimestamp(first_item['current_period_end'])
-
-                if not start_date and stripe_sub.get('current_period_start'):
-                    start_date = datetime.fromtimestamp(stripe_sub['current_period_start'])
-                if not end_date and stripe_sub.get('current_period_end'):
-                    end_date = datetime.fromtimestamp(stripe_sub['current_period_end'])
+                    if hasattr(first_item, 'price') and first_item.price:
+                        if hasattr(first_item.price, 'product') and first_item.price.product:
+                            plan_name = product_map.get(first_item.price.product, "N/A")
+                        if hasattr(first_item.price, 'unit_amount') and first_item.price.unit_amount:
+                            price = first_item.price.unit_amount / 100
 
                 if not start_date or not end_date:
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"Could not retrieve billing period for subscription {db_sub.stripe_subscription_id}")
                     continue
 
                 payment_method = "N/A"
-                if stripe_sub.get('default_payment_method'):
-                    pm = stripe_sub['default_payment_method']
-                    if pm.get('type') == 'card' and pm.get('card'):
-                        card = pm['card']
-                        payment_method = f"{card['brand'].capitalize()} **** {card['last4']}"
+                if hasattr(stripe_sub, 'default_payment_method') and stripe_sub.default_payment_method:
+                    pm = stripe_sub.default_payment_method
+                    if isinstance(pm, stripe.PaymentMethod) and pm.type == 'card' and pm.card:
+                        payment_method = f"{pm.card.brand.capitalize()} **** {pm.card.last4}"
 
                 invoice_no = "N/A"
-                if stripe_sub.get('latest_invoice') and stripe_sub['latest_invoice'].get('number'):
-                    invoice_no = stripe_sub['latest_invoice']['number']
+                if hasattr(stripe_sub, 'latest_invoice') and stripe_sub.latest_invoice:
+                    inv = stripe_sub.latest_invoice
+                    if isinstance(inv, stripe.Invoice):
+                        invoice_no = inv.number or inv.id
 
                 subscription_details.append(
                     SubscriptionDetailSchema(
@@ -241,16 +254,15 @@ class StripeService:
                         price=price,
                         payment_method=payment_method,
                         invoice_no=invoice_no,
-                        status=stripe_sub.get('status', 'unknown')
+                        status=stripe_sub.status
                     )
                 )
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Error processing subscription {db_sub.stripe_subscription_id}: {e}", exc_info=True)
+                logger.error(f"Error processing subscription {stripe_sub.id}: {e}", exc_info=True)
 
         return subscription_details
-
     async def cancel_subscription(self, db: Session, subscription_id: str) -> Subscription:
         db_subscription = await self.get_subscription(db, subscription_id)
         if not db_subscription:

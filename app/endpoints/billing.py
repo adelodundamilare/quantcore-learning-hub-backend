@@ -110,9 +110,10 @@ async def create_subscription(
 @router.get("/subscriptions", response_model=APIResponse[List[SubscriptionDetailSchema]])
 async def get_subscriptions(
     db: Session = Depends(deps.get_db),
-    context: UserContext = Depends(deps.get_current_user_with_context)
+    context: UserContext = Depends(deps.get_current_user_with_context),
+    status: str = Query('active', enum=['active', 'canceled', 'all'])
 ):
-    subscriptions = await stripe_service.get_subscriptions(db=db, user=context.user)
+    subscriptions = await stripe_service.get_subscriptions(db=db, user=context.user, status=status)
     return APIResponse(message="Subscriptions retrieved successfully", data=subscriptions)
 
 @router.put("/subscriptions/{subscription_id}", response_model=APIResponse[SubscriptionSchema])
