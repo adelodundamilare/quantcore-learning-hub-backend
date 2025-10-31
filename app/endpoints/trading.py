@@ -146,6 +146,52 @@ def create_trading_router():
             data=portfolio
         )
 
+    @router.get("/portfolio/history", response_model=APIResponse[PortfolioHistoricalDataSchema])
+    async def get_portfolio_history(
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+        db: Session = Depends(deps.get_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        from_dt: Optional[datetime] = None
+        to_dt: Optional[datetime] = None
+
+        if from_date:
+            try:
+                from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid from_date format. Use YYYY-MM-DD"
+                )
+
+        if to_date:
+            try:
+                to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid to_date format. Use YYYY-MM-DD"
+                )
+
+        if from_dt and to_dt and from_dt > to_dt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="from_date must be before to_date"
+            )
+
+        historical_data = await trading_service.get_portfolio_historical_data(
+            db,
+            user_id=context.user.id,
+            from_date=from_dt,
+            to_date=to_dt
+        )
+
+        return APIResponse(
+            message="Portfolio historical data retrieved successfully",
+            data=PortfolioHistoricalDataSchema(user_id=context.user.id, results=historical_data)
+        )
+
     @router.get("/portfolio/{position_id}", response_model=APIResponse[PortfolioItemSchema])
     async def get_portfolio_position_by_id(
         position_id: int,
@@ -386,52 +432,6 @@ def create_trading_router():
         return APIResponse(
             message=f"Historical data for {ticker} retrieved successfully",
             data=historical_schema
-        )
-
-    @router.get("/portfolio/history", response_model=APIResponse[PortfolioHistoricalDataSchema])
-    async def get_portfolio_history(
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-        db: Session = Depends(deps.get_db),
-        context: UserContext = Depends(deps.get_current_user_with_context)
-    ):
-        from_dt: Optional[datetime] = None
-        to_dt: Optional[datetime] = None
-
-        if from_date:
-            try:
-                from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid from_date format. Use YYYY-MM-DD"
-                )
-
-        if to_date:
-            try:
-                to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid to_date format. Use YYYY-MM-DD"
-                )
-
-        if from_dt and to_dt and from_dt > to_dt:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="from_date must be before to_date"
-            )
-
-        historical_data = await trading_service.get_portfolio_historical_data(
-            db,
-            user_id=context.user.id,
-            from_date=from_dt,
-            to_date=to_dt
-        )
-
-        return APIResponse(
-            message="Portfolio historical data retrieved successfully",
-            data=PortfolioHistoricalDataSchema(user_id=context.user.id, results=historical_data)
         )
 
     @router.get("/news", response_model=APIResponse[List[NewsArticle]])
