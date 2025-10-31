@@ -30,6 +30,12 @@ To ensure that only authorized users can perform specific actions, endpoints are
 1.  **Super Admin Bypass:** Users with the `SUPER_ADMIN` role automatically bypass all permission checks, granting them full access to all functionalities.
 2.  **Role-Based Permissions:** For all other roles (e.g., `ADMIN`, `MEMBER`, `SCHOOL_ADMIN`, `TEACHER`, `STUDENT`), the system checks the permissions explicitly assigned to their role in the database.
 
+#### Module-Specific Access Restrictions
+
+Certain modules have specific role-based access restrictions beyond general permissions:
+
+*   **Billing Module:** Access to all endpoints within the `/billing` module is restricted. Users with the `STUDENT` or `TEACHER` role will receive a `403 Forbidden` error when attempting to access any billing-related functionality.
+
 #### Usage
 
 To protect an endpoint, simply add `Depends(deps.require_permission(PermissionEnum.<YOUR_PERMISSION>))` to its `dependencies` list. Replace `<YOUR_PERMISSION>` with the specific permission required from `app.core.constants.PermissionEnum`.
