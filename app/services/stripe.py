@@ -237,8 +237,10 @@ class StripeService:
                         plan_name=plan_name,
                         price=price,
                         payment_method=payment_method,
+                        subscription_id=stripe_sub.id,
                         invoice_no=invoice_no,
-                        status=stripe_sub.status
+                        status=stripe_sub.status,
+                        cancel_at_period_end=stripe_sub.cancel_at_period_end
                     )
                 )
             except Exception as e:
@@ -273,7 +275,7 @@ class StripeService:
         stripe_subscription = await self._make_request(
             stripe.Subscription.modify,
             subscription_id,
-            cancel_at_period_end=not auto_renew
+            cancel_at_period_end=auto_renew
         )
 
         update_data = {

@@ -169,13 +169,13 @@ class SubscriptionDetailSchema(BaseModel):
     plan_name: str
     price: float
     payment_method: str
+    subscription_id: str
     invoice_no: str
     status: str
-
+    cancel_at_period_end: bool
 
 class SubscriptionAutoRenew(BaseModel):
     auto_renew: bool
-
 
 class PortalSession(BaseModel):
     id: str
