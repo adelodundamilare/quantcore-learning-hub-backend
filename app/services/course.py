@@ -34,8 +34,12 @@ class CourseService:
         course_data['school_id'] = school_id_for_course
         new_course = crud_course.create(db, obj_in=course_data)
 
+        teacher_user = crud_user.get(db, id=current_user_context.user.id)
+        if not teacher_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher user not found.")
+
         if permission_helper.is_teacher(current_user_context):
-            crud_course.add_teacher_to_course(db, course=new_course, user=current_user_context.user)
+            crud_course.add_teacher_to_course(db, course=new_course, user=teacher_user)
 
         db.flush()
 
