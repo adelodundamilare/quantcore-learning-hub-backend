@@ -26,7 +26,8 @@ from app.schemas.billing import (
     CheckoutSession,
     BillingReportSchema,
     TransactionTimeseriesReport,
-    InvoiceStatusUpdate
+    InvoiceStatusUpdate,
+    SubscriptionAutoRenew
 )
 from app.core.constants import RoleEnum, TimePeriod
 from app.models.billing import StripeCustomer
@@ -129,6 +130,23 @@ async def cancel_subscription(
 ):
     subscription = await stripe_service.cancel_subscription(db=db, subscription_id=subscription_id)
     return APIResponse(message="Subscription cancelled successfully", data=subscription)
+
+
+@router.put("/subscriptions/{subscription_id}/auto-renewal", response_model=APIResponse[SubscriptionSchema])
+async def update_subscription_auto_renewal(
+    subscription_id: str,
+    auto_renew_in: SubscriptionAutoRenew,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    subscription = await stripe_service.update_subscription_auto_renewal(
+        db=db, 
+        subscription_id=subscription_id, 
+        auto_renew=auto_renew_in.auto_renew,
+        context=context
+    )
+    message = "Subscription auto-renewal enabled successfully" if auto_renew_in.auto_renew else "Subscription auto-renewal disabled successfully"
+    return APIResponse(message=message, data=subscription)
 
 @router.get("/invoices", response_model=APIResponse[List[BillingHistoryInvoiceSchema]])
 async def get_invoices(

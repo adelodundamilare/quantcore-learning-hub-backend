@@ -171,3 +171,7 @@ class SubscriptionDetailSchema(BaseModel):
     payment_method: str
     invoice_no: str
     status: str
+
+
+class SubscriptionAutoRenew(BaseModel):
+    auto_renew: bool

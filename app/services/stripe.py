@@ -264,6 +264,27 @@ class StripeService:
         }
         return crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
 
+    async def update_subscription_auto_renewal(self, db: Session, subscription_id: str, auto_renew: bool, context: UserContext) -> Subscription:
+        db_subscription = await self.get_subscription(db, subscription_id)
+
+        if not db_subscription or db_subscription.user_id != context.user.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found.")
+
+        if db_subscription.status != 'active':
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Auto-renewal can only be updated for active subscriptions.")
+
+        stripe_subscription = await self._make_request(
+            stripe.Subscription.modify,
+            subscription_id,
+            cancel_at_period_end=not auto_renew
+        )
+
+        update_data = {
+            "status": stripe_subscription.status,
+            "cancel_at_period_end": stripe_subscription.cancel_at_period_end
+        }
+        return crud_subscription.update(db, db_obj=db_subscription, obj_in=update_data)
+
     async def get_invoices(self, db: Session, context: UserContext) -> List[BillingHistoryInvoiceSchema]:
         user_model = context.user
 
