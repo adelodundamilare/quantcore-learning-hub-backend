@@ -12,13 +12,15 @@ from app.crud.stripe_customer import stripe_customer as crud_stripe_customer
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.core.constants import RoleEnum
-from app.schemas.billing import BillingReportSchema, InvoiceCreate, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint, SubscriptionDetailSchema
+from app.schemas.billing import BillingReportSchema, InvoiceCreate, StripeCustomerCreate, BillingHistoryInvoiceSchema, TransactionTimeseriesReport, TimeseriesDataPoint, SubscriptionDetailSchema, SchoolInvoiceSchema, InvoicePaymentIntentSchema, InvoiceCheckoutSessionCreate, CheckoutSession
 from app.schemas.user import User as UserSchema, UserContext
 from app.crud.school import school as crud_school
 from app.services.email import EmailService
 from app.services.notification import notification_service
 from app.crud.stripe_product import stripe_product as crud_stripe_product
 from app.crud.stripe_price import stripe_price as crud_stripe_price
+from app.crud.invoice import invoice as crud_invoice
+from app.models.billing import Invoice
 from collections import defaultdict
 from enum import Enum
 
@@ -482,6 +484,19 @@ class StripeService:
             invoice.id
         )
 
+        due_date = datetime.fromtimestamp(finalized_invoice.due_date) if finalized_invoice.due_date else None
+
+        db_invoice = Invoice(
+            school_id=invoice_in.school_id,
+            stripe_invoice_id=finalized_invoice.id,
+            amount=invoice_in.amount,
+            currency=invoice_in.currency,
+            status=finalized_invoice.status,
+            description=invoice_in.description,
+            due_date=due_date
+        )
+        crud_invoice.create(db, obj_in=db_invoice)
+
         return finalized_invoice
 
     async def create_product(self, name: str, description: Optional[str] = None, unit_amount: int = None, currency: str = "usd", recurring_interval: str = "month", metadata: Optional[Dict[str, str]] = None) -> stripe.Product:
@@ -581,6 +596,130 @@ class StripeService:
 
     async def update_invoice_status(self, invoice_id: str, status: str) -> stripe.Invoice:
         return await self._make_request(stripe.Invoice.modify, invoice_id, status=status)
+
+    async def get_school_invoices(self, db: Session, context: UserContext) -> List[SchoolInvoiceSchema]:
+        if not context.school:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must be assigned to a school.")
+
+        from app.utils.permission import permission_helper
+        if not permission_helper.is_school_admin(context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only school admins can view school invoices.")
+
+        invoices = crud_invoice.get_multi_by_school(db, school_id=context.school.id)
+
+        enriched_invoices = []
+        for invoice in invoices:
+            try:
+                stripe_invoice = await self._make_request(stripe.Invoice.retrieve, invoice.stripe_invoice_id)
+                invoice_pdf_url = getattr(stripe_invoice, 'invoice_pdf', None)
+            except Exception as e:
+                invoice_pdf_url = None
+
+            invoice_data = {
+                "id": invoice.id,
+                "school_id": invoice.school_id,
+                "stripe_invoice_id": invoice.stripe_invoice_id,
+                "amount": invoice.amount,
+                "currency": invoice.currency,
+                "status": invoice.status,
+                "description": invoice.description,
+                "due_date": invoice.due_date,
+                "invoice_pdf": invoice_pdf_url,
+                "created_at": invoice.created_at,
+                "updated_at": invoice.updated_at
+            }
+            enriched_invoices.append(SchoolInvoiceSchema(**invoice_data))
+
+        return enriched_invoices
+
+    async def create_invoice_payment_intent(self, db: Session, invoice_id: int, context: UserContext) -> InvoicePaymentIntentSchema:
+        if not context.school:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must be assigned to a school.")
+
+        from app.utils.permission import permission_helper
+        if not permission_helper.is_school_admin(context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only school admins can pay invoices.")
+
+        invoice = crud_invoice.get(db, id=invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+
+        if invoice.school_id != context.school.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invoice does not belong to your school.")
+
+        if invoice.status not in ['open', 'draft']:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invoice status '{invoice.status}' is not payable.")
+
+        school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice.school_id)
+
+        amount_cents = int(invoice.amount * 100)
+        payment_intent = await self._make_request(
+            stripe.PaymentIntent.create,
+            amount=amount_cents,
+            currency=invoice.currency,
+            customer=school_customer.stripe_customer_id,
+            metadata={
+                "invoice_id": str(invoice.id),
+                "school_id": str(invoice.school_id),
+                "stripe_invoice_id": invoice.stripe_invoice_id
+            },
+            description=f"Payment for invoice {invoice.stripe_invoice_id}"
+        )
+
+        return InvoicePaymentIntentSchema(
+            client_secret=payment_intent.client_secret,
+            invoice_id=invoice.id,
+            amount=invoice.amount,
+            currency=invoice.currency
+        )
+
+    async def create_invoice_checkout_session(self, db: Session, invoice_id: int, context: UserContext, success_url: str, cancel_url: str) -> CheckoutSession:
+        if not context.school:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must be assigned to a school.")
+
+        from app.utils.permission import permission_helper
+        if not permission_helper.is_school_admin(context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only school admins can pay invoices.")
+
+        invoice = crud_invoice.get(db, id=invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+
+        if invoice.school_id != context.school.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invoice does not belong to your school.")
+
+        if invoice.status not in ['open', 'draft']:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invoice status '{invoice.status}' is not payable.")
+
+        school_customer = await self._get_or_create_customer_from_school_id(db, school_id=invoice.school_id)
+
+        amount_cents = int(invoice.amount * 100)
+
+        checkout_session = await self._make_request(
+            stripe.checkout.Session.create,
+            customer=school_customer.stripe_customer_id,
+            line_items=[{
+                'price_data': {
+                    'currency': invoice.currency,
+                    'product_data': {
+                        'name': f'Invoice Payment - {invoice.stripe_invoice_id}',
+                        'description': invoice.description or f'Payment for invoice {invoice.stripe_invoice_id}',
+                    },
+                    'unit_amount': amount_cents,
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "invoice_id": str(invoice.id),
+                "school_id": str(invoice.school_id),
+                "stripe_invoice_id": invoice.stripe_invoice_id
+            }
+        )
+
+        return CheckoutSession(id=checkout_session.id, url=checkout_session.url)
 
     async def handle_invoice_paid_event(self, db: Session, event: stripe.Event):
         invoice = event['data']['object']

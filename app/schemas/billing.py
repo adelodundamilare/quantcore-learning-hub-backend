@@ -163,6 +163,35 @@ class InvoiceStatusEnum(str, Enum):
 class InvoiceStatusUpdate(BaseModel):
     status: InvoiceStatusEnum
 
+class SchoolInvoiceSchema(BaseModel):
+    id: int
+    school_id: int
+    stripe_invoice_id: str
+    amount: float
+    currency: str
+    status: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    invoice_pdf: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class InvoicePaymentIntentCreate(BaseModel):
+    invoice_id: int
+
+class InvoicePaymentIntentSchema(BaseModel):
+    client_secret: str
+    invoice_id: int
+    amount: float
+    currency: str
+
+class InvoiceCheckoutSessionCreate(BaseModel):
+    invoice_id: int
+    success_url: str
+    cancel_url: str
+
 class SubscriptionDetailSchema(BaseModel):
     start_date: datetime
     end_date: datetime

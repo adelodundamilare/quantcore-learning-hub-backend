@@ -17,3 +17,4 @@ class School(Base):
         back_populates="schools"
     )
     courses = relationship("Course", back_populates="school")
+    invoices = relationship("Invoice", back_populates="school")

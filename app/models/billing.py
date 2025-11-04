@@ -33,6 +33,22 @@ class Subscription(Base):
     user = relationship("User", back_populates="subscriptions")
     customer = relationship("StripeCustomer", back_populates="subscriptions")
 
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=False)
+    stripe_invoice_id = Column(String, unique=True, index=True, nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False, default="usd")
+    status = Column(String, nullable=False)  # draft, open, paid, uncollectible, void
+    description = Column(String, nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    school = relationship("School", back_populates="invoices")
+
 class StripeProduct(Base):
     __tablename__ = "stripe_products"
 

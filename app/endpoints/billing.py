@@ -28,7 +28,10 @@ from app.schemas.billing import (
     BillingReportSchema,
     TransactionTimeseriesReport,
     InvoiceStatusUpdate,
-    SubscriptionAutoRenew
+    SubscriptionAutoRenew,
+    SchoolInvoiceSchema,
+    InvoicePaymentIntentSchema,
+    InvoiceCheckoutSessionCreate
 )
 from app.core.constants import RoleEnum, TimePeriod
 
@@ -331,3 +334,32 @@ async def update_invoice_status(
 ):
     invoice = await stripe_service.update_invoice_status(invoice_id, status_in.status.value)
     return APIResponse(message="Invoice status updated successfully", data=invoice)
+
+@router.get("/school/invoices", response_model=APIResponse[List[SchoolInvoiceSchema]])
+async def get_school_invoices(
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    invoices = await stripe_service.get_school_invoices(db, context)
+    return APIResponse(message="School invoices retrieved successfully", data=invoices)
+
+@router.post("/school/invoices/{invoice_id}/pay", response_model=APIResponse[InvoicePaymentIntentSchema])
+async def create_invoice_payment_intent(
+    invoice_id: int,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    payment_intent = await stripe_service.create_invoice_payment_intent(db, invoice_id, context)
+    return APIResponse(message="Payment intent created successfully", data=payment_intent)
+
+@router.post("/school/invoices/{invoice_id}/checkout", response_model=APIResponse[CheckoutSession])
+async def create_invoice_checkout_session(
+    invoice_id: int,
+    session_in: InvoiceCheckoutSessionCreate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    checkout_session = await stripe_service.create_invoice_checkout_session(
+        db, invoice_id, context, session_in.success_url, session_in.cancel_url
+    )
+    return APIResponse(message="Checkout session created successfully", data=checkout_session)
