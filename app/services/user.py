@@ -1,8 +1,12 @@
-from typing import List
+from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 import secrets
 import string
+import uuid
+import pandas as pd
+from datetime import datetime
+import io
 
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
@@ -11,7 +15,10 @@ from app.crud.school import school as crud_school
 from app.crud.course_enrollment import course_enrollment as crud_course_enrollment
 from app.crud.curriculum import curriculum as crud_curriculum
 from app.crud.course import course as crud_course
-from app.schemas.user import TeacherProfile, TeacherUpdate, UserContext, UserInvite, User as UserSchema, StudentProfile
+from app.schemas.user import (
+    TeacherProfile, TeacherUpdate, UserContext, UserInvite, User as UserSchema,
+    StudentProfile, BulkInviteRequest, BulkInviteResult, BulkInviteStatus
+)
 from app.models.user import User
 from app.models.school import School
 from app.core.security import get_password_hash, verify_password
@@ -19,7 +26,8 @@ from app.services.email import EmailService
 from app.utils.permission import PermissionHelper as permission_helper
 from app.services.notification import notification_service
 from app.services.course import course_service
-from app.services.trading import trading_service # Import trading_service
+from app.services.trading import trading_service
+import re
 
 class UserService:
 
@@ -316,5 +324,187 @@ class UserService:
         user_data["num_students_taught"] = total_students_taught
 
         return TeacherProfile.model_validate(user_data)
+
+    _bulk_invite_tasks: Dict[str, BulkInviteStatus] = {}
+
+    def parse_invite_file(self, file_content: bytes, filename: str) -> pd.DataFrame:
+        try:
+            if filename.lower().endswith('.csv'):
+                df = pd.read_csv(io.BytesIO(file_content))
+            elif filename.lower().endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(io.BytesIO(file_content))
+            else:
+                raise ValueError("Unsupported file format. Please upload CSV or Excel files.")
+
+            required_columns = ['email', 'full_name', 'role']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+
+            df = df.dropna(subset=required_columns)
+            df['email'] = df['email'].astype(str).str.strip().str.lower()
+            df['full_name'] = df['full_name'].astype(str).str.strip()
+            df['role'] = df['role'].astype(str).str.strip().str.lower()
+
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            valid_emails = df['email'].str.match(email_pattern)
+            if not valid_emails.all():
+                invalid_emails = df[~valid_emails]['email'].tolist()
+                raise ValueError(f"Invalid email format(s): {', '.join(invalid_emails[:5])}")
+
+            valid_roles = ['teacher', 'student']
+            invalid_roles = df[~df['role'].isin(valid_roles)]['role'].unique()
+            if len(invalid_roles) > 0:
+                raise ValueError(f"Invalid role(s): {', '.join(invalid_roles)}. Valid roles are: {', '.join(valid_roles)}")
+
+            return df
+
+        except Exception as e:
+            raise ValueError(f"Error parsing file: {str(e)}")
+
+    def start_bulk_invite(
+        self, db: Session, file_content: bytes, filename: str,
+        bulk_invite_request: BulkInviteRequest, school: School,
+        current_user_context: UserContext
+    ) -> str:
+        try:
+            df = self.parse_invite_file(file_content, filename)
+
+            task_id = str(uuid.uuid4())
+            task_status = BulkInviteStatus(
+                task_id=task_id,
+                status="processing",
+                total_rows=len(df),
+                processed_rows=0,
+                successful_invites=0,
+                failed_invites=0,
+                results=[],
+                created_at=datetime.now()
+            )
+
+            self._bulk_invite_tasks[task_id] = task_status
+
+            # For now, we'll process synchronously. In production, use background tasks
+            self._process_bulk_invites(db, df, bulk_invite_request, school, current_user_context, task_id)
+
+            return task_id
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to start bulk invite: {str(e)}"
+            )
+
+    def _process_bulk_invites(
+        self, db: Session, df: pd.DataFrame, bulk_invite_request: BulkInviteRequest,
+        school: School, current_user_context: UserContext, task_id: str
+    ):
+        """Process bulk invites and update task status."""
+        task_status = self._bulk_invite_tasks[task_id]
+        results = []
+
+        try:
+            for index, row in df.iterrows():
+                row_number = index + 2  # +2 because pandas is 0-indexed and Excel starts at 1, plus header
+                try:
+                    invite_data = UserInvite(
+                        email=row['email'],
+                        full_name=row['full_name'],
+                        role_name=RoleEnum(row['role']),
+                        course_ids=bulk_invite_request.course_ids,
+                        level=bulk_invite_request.level
+                    )
+
+                    from sqlalchemy import exc
+                    try:
+                        invited_user = self.invite_user(
+                            db, school=school, invite_in=invite_data,
+                            current_user_context=current_user_context
+                        )
+                        db.commit()
+
+                        result = BulkInviteResult(
+                            row_number=row_number,
+                            email=row['email'],
+                            full_name=row['full_name'],
+                            role_name=RoleEnum(row['role']),
+                            status="success",
+                            message="User invited successfully",
+                            user_id=invited_user.id
+                        )
+                        task_status.successful_invites += 1
+
+                    except exc.IntegrityError as e:
+                        db.rollback()
+                        result = BulkInviteResult(
+                            row_number=row_number,
+                            email=row['email'],
+                            full_name=row['full_name'],
+                            role_name=RoleEnum(row['role']) if row['role'] in ['teacher', 'student'] else RoleEnum.STUDENT,
+                            status="error",
+                            message="User already exists or association already exists",
+                            user_id=None
+                        )
+                        task_status.failed_invites += 1
+
+                    except HTTPException as e:
+                        db.rollback()
+                        result = BulkInviteResult(
+                            row_number=row_number,
+                            email=row['email'],
+                            full_name=row['full_name'],
+                            role_name=RoleEnum(row['role']) if row['role'] in ['teacher', 'student'] else RoleEnum.STUDENT,
+                            status="error",
+                            message=e.detail,
+                            user_id=None
+                        )
+                        task_status.failed_invites += 1
+
+                    except Exception as e:
+                        db.rollback()
+                        result = BulkInviteResult(
+                            row_number=row_number,
+                            email=row['email'],
+                            full_name=row['full_name'],
+                            role_name=RoleEnum(row['role']) if row['role'] in ['teacher', 'student'] else RoleEnum.STUDENT,
+                            status="error",
+                            message=f"Unexpected error: {str(e)}",
+                            user_id=None
+                        )
+                        task_status.failed_invites += 1
+
+                except Exception as e:
+                    result = BulkInviteResult(
+                        row_number=row_number,
+                        email=row['email'] if 'email' in row else 'N/A',
+                        full_name=row['full_name'] if 'full_name' in row else 'N/A',
+                        role_name=RoleEnum.STUDENT,
+                        status="error",
+                        message=f"Row processing error: {str(e)}",
+                        user_id=None
+                    )
+                    task_status.failed_invites += 1
+
+                results.append(result)
+                task_status.processed_rows += 1
+
+            task_status.status = "completed"
+            task_status.results = results
+            task_status.completed_at = datetime.now()
+
+        except Exception as e:
+            task_status.status = "failed"
+            task_status.error_message = str(e)
+            task_status.completed_at = datetime.now()
+
+    def get_bulk_invite_status(self, task_id: str) -> BulkInviteStatus:
+        """Get the status of a bulk invite task."""
+        if task_id not in self._bulk_invite_tasks:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bulk invite task not found"
+            )
+
+        return self._bulk_invite_tasks[task_id]
 
 user_service = UserService()

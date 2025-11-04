@@ -10,7 +10,7 @@ from app.utils.logger import setup_logger
 from app.models.user import User
 from app.services.email import EmailService
 
-from app.schemas.user import User, UserUpdate, UserInvite
+from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus
 from typing import List
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
@@ -20,6 +20,7 @@ from app.core.constants import RoleEnum
 from app.schemas.trading import AccountBalanceSchema
 from app.services.trading import trading_service
 from decimal import Decimal
+from fastapi import UploadFile, File
 
 logger = setup_logger("account_api", "account.log")
 
@@ -97,6 +98,81 @@ def invite_user(
     )
 
     return APIResponse(message="User invited successfully", data=User.model_validate(invited_user))
+
+@router.post("/bulk-invite", response_model=APIResponse[dict])
+async def bulk_invite_users(
+    file: UploadFile = File(...),
+    bulk_invite_request: BulkInviteRequest = Depends(),
+    db: Session = Depends(deps.get_db),
+    context: deps.UserContext = Depends(deps.get_current_user_with_context),
+):
+    if not context.school:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must have a school context to invite users."
+        )
+
+    if not (file.filename.lower().endswith(('.csv', '.xlsx', '.xls'))):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Please upload a CSV or Excel file."
+        )
+
+    file_content = await file.read()
+    if len(file_content) > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum file size is 10MB."
+        )
+
+    try:
+        task_id = user_service.start_bulk_invite(
+            db=db,
+            file_content=file_content,
+            filename=file.filename,
+            bulk_invite_request=bulk_invite_request,
+            school=context.school,
+            current_user_context=context
+        )
+
+        return APIResponse(
+            message="Bulk invite processing started",
+            data={"task_id": task_id}
+        )
+
+    except Exception as e:
+        logger.error(f"Bulk invite error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to process bulk invite: {str(e)}"
+        )
+
+@router.get("/bulk-invite/{task_id}", response_model=APIResponse[BulkInviteStatus])
+def get_bulk_invite_status(
+    task_id: str,
+    context: deps.UserContext = Depends(deps.get_current_user_with_context),
+):
+    """Get the status of a bulk invite task."""
+    if not context.school:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must have a school context to check invite status."
+        )
+
+    try:
+        status = user_service.get_bulk_invite_status(task_id)
+        return APIResponse(
+            message="Bulk invite status retrieved successfully",
+            data=status
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving bulk invite status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve bulk invite status"
+        )
 
 @router.post("/me/change-password", response_model=APIResponse[None])
 async def change_password(

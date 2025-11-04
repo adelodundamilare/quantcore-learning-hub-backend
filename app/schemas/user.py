@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, model_validator
 from typing import Optional, Any, List
+from datetime import datetime
 
 from app.schemas.billing import StripeCustomerSchema
 
@@ -109,3 +110,45 @@ class AdminSchoolInvite(BaseModel):
 
 class TeacherUpdate(BaseModel):
     level: CourseLevelEnum
+
+
+class BulkInviteRequest(BaseModel):
+    course_ids: Optional[List[int]] = None
+    level: Optional[CourseLevelEnum] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "course_ids": [1, 2, 3],
+                "level": "beginner"
+            }
+        }
+    )
+
+
+class BulkInviteResult(BaseModel):
+    row_number: int
+    email: str
+    full_name: str
+    role_name: RoleEnum
+    status: str  # "success", "error", "skipped"
+    message: str
+    user_id: Optional[int] = None
+
+    model_config = ConfigDict(use_enum_values=True)
+
+
+class BulkInviteStatus(BaseModel):
+    """Schema for bulk invite processing status."""
+    task_id: str
+    status: str  # "processing", "completed", "failed"
+    total_rows: int
+    processed_rows: int
+    successful_invites: int
+    failed_invites: int
+    results: List[BulkInviteResult]
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+
+    model_config = ConfigDict(use_enum_values=True)
