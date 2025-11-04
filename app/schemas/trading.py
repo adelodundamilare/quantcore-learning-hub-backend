@@ -29,6 +29,7 @@ class StockSchema(BaseModel):
     last_updated_utc: Optional[str] = None
     delisted_utc: Optional[str] = None
     sparkline_data: Optional[List[float]] = None
+    logo_url: Optional[str] = None
 
 class CompanyDetailsSchema(BaseModel):
     symbol: str
@@ -59,6 +60,7 @@ class StockDetailsSchema(BaseModel):
     headquarters: Optional[str] = None
     founded: Optional[str] = None
     sparkline_data: Optional[List[float]] = None
+    logo_url: Optional[str] = None
 
 class WatchlistStockBase(BaseModel):
     symbol: str
@@ -75,6 +77,7 @@ class WatchlistStockSchema(WatchlistStockBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     sparkline_data: Optional[List[float]] = None
+    logo_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

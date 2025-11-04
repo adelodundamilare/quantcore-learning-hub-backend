@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 
 from app.core.config import settings
+from app.services.logo import logo_service
 
 class PolygonService:
     def __init__(self):
@@ -132,6 +133,7 @@ class PolygonService:
         }
         if search:
             params["search"] = search
+            params["type"] = "CS"
 
         data = await self._make_request(path, params=params, allow_404=True)
         if not data:
@@ -140,10 +142,14 @@ class PolygonService:
         results = data.get("results", [])
 
         stocks = []
+        symbols_and_names = {result.get("ticker"): result.get("name") for result in results}
+        logos = await logo_service.get_multiple_logos(symbols_and_names)
+
         for result in results:
-            sparkline_data = await self._get_sparkline_data(result.get("ticker"))
+            ticker = result.get("ticker")
+            sparkline_data = await self._get_sparkline_data(ticker)
             stocks.append({
-                "symbol": result.get("ticker"),
+                "symbol": ticker,
                 "name": result.get("name"),
                 "market": result.get("market"),
                 "locale": result.get("locale"),
@@ -156,7 +162,8 @@ class PolygonService:
                 "share_class_figi": result.get("share_class_figi"),
                 "last_updated_utc": result.get("last_updated_utc"),
                 "delisted_utc": result.get("delisted_utc"),
-                "sparkline_data": sparkline_data
+                "sparkline_data": sparkline_data,
+                "logo_url": logos.get(ticker)
             })
         return stocks
 
@@ -166,6 +173,9 @@ class PolygonService:
 
         if not quote_data and not company_details:
             return None
+
+        company_name = company_details.get("name") if company_details else None
+        logo_url = await logo_service.get_company_logo(ticker, company_name)
 
         combined_details = {
             "symbol": ticker,
@@ -185,7 +195,8 @@ class PolygonService:
             "employees": company_details.get("employees") if company_details else None,
             "headquarters": company_details.get("headquarters") if company_details else None,
             "founded": company_details.get("founded") if company_details else None,
-            "sparkline_data": await self._get_sparkline_data(ticker)
+            "sparkline_data": await self._get_sparkline_data(ticker),
+            "logo_url": logo_url
         }
         return combined_details
 

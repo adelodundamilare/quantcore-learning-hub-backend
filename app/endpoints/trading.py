@@ -29,12 +29,21 @@ from app.schemas.trading import (
 )
 from app.services.polygon import polygon_service
 from app.services.trading import trading_service
+from app.services.popular_stocks_cache import popular_stocks_cache
+
+# Popular stocks to show by default
+POPULAR_STOCKS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "NFLX",
+    "AMD", "INTC", "CRM", "ORCL", "CSCO", "ADBE", "PYPL", "UBER",
+    "SPOT", "ZOOM", "SHOP", "SQ", "COIN", "ROKU", "PINS", "SNAP",
+    "TTD", "OKTA", "ZS", "CRWD", "DDOG", "NOW", "DOCU", "PLTR"
+]
 
 def create_trading_router():
     router = APIRouter()
 
     @router.get("/stocks", response_model=APIResponse[List[StockSchema]])
-    async def get_all_stocks(
+    async def get_stocks(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
         search: Optional[str] = None,
@@ -42,8 +51,25 @@ def create_trading_router():
         limit: int = 100,
         offset: int = 0
     ):
-        stocks = await polygon_service.get_all_stocks(search=search, active=active, limit=limit, offset=offset)
-        return APIResponse(message="Stocks retrieved successfully", data=stocks)
+        if search:
+            stocks = await polygon_service.get_all_stocks(
+                search=search, active=active, limit=limit, offset=offset
+            )
+            message = f"Found {len(stocks)} stocks matching '{search}'"
+        else:
+            stocks_data = await popular_stocks_cache.get_popular_stocks(limit=limit)
+
+            stocks = []
+            for stock_data in stocks_data:
+                try:
+                    stock = StockSchema(**stock_data)
+                    stocks.append(stock)
+                except Exception as e:
+                    continue
+
+            message = f"Popular stocks retrieved ({len(stocks)} stocks)"
+
+        return APIResponse(message=message, data=stocks)
 
     @router.get("/stocks/{ticker}/details_combined", response_model=APIResponse[StockDetailsSchema])
     async def get_stock_details_combined(

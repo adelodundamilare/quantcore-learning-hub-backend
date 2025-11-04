@@ -36,6 +36,7 @@ from app.crud.trading import (
 from app.crud.transaction import transaction as crud_transaction
 from app.schemas.user import UserContext
 from app.services.polygon import polygon_service
+from app.services.logo import logo_service
 from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
 from app.utils.permission import PermissionHelper as permission_helper
 
@@ -105,7 +106,7 @@ class TradingService:
         result_watchlists = []
 
         for wl in watchlists:
-            stocks_with_sparkline = []
+            stocks_with_data = []
             symbols = [stock.symbol for stock in wl.stocks]
 
             sparkline_tasks = [
@@ -114,20 +115,27 @@ class TradingService:
             ]
             sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
 
+            company_details = await polygon_service.get_multi_stock_details(symbols)
+            symbols_and_names = {symbol: company_details.get(symbol, {}).get("name") for symbol in symbols}
+            logos = await logo_service.get_multiple_logos(symbols_and_names)
+
             for stock_item, sparkline_data in zip(wl.stocks, sparkline_results):
                 if isinstance(sparkline_data, Exception):
                     logger.error(f"Error fetching sparkline for {stock_item.symbol}: {sparkline_data}")
                     sparkline_data = []
 
-                stocks_with_sparkline.append(
-                    WatchlistStockSchema.model_validate(
-                        stock_item.__dict__ | {"sparkline_data": sparkline_data}
-                    )
+                stock_data = stock_item.__dict__ | {
+                    "sparkline_data": sparkline_data,
+                    "logo_url": logos.get(stock_item.symbol)
+                }
+
+                stocks_with_data.append(
+                    WatchlistStockSchema.model_validate(stock_data)
                 )
 
             result_watchlists.append(
                 UserWatchlistSchema.model_validate(
-                    wl.__dict__ | {"stocks": stocks_with_sparkline}
+                    wl.__dict__ | {"stocks": stocks_with_data}
                 )
             )
 
@@ -147,28 +155,35 @@ class TradingService:
                 detail="Watchlist not found"
             )
 
-        stocks_with_sparkline = []
+        stocks_with_data = []
         symbols = [stock.symbol for stock in watchlist.stocks]
+
         sparkline_tasks = [
             polygon_service._get_sparkline_data(symbol)
             for symbol in symbols
         ]
         sparkline_results = await asyncio.gather(*sparkline_tasks, return_exceptions=True)
 
+        company_details = await polygon_service.get_multi_stock_details(symbols)
+        symbols_and_names = {symbol: company_details.get(symbol, {}).get("name") for symbol in symbols}
+        logos = await logo_service.get_multiple_logos(symbols_and_names)
+
         for stock_item, sparkline_data in zip(watchlist.stocks, sparkline_results):
             if isinstance(sparkline_data, Exception):
                 logger.error(f"Error fetching sparkline for {stock_item.symbol}: {sparkline_data}")
                 sparkline_data = []
 
-            stocks_with_sparkline.append(
-                WatchlistStockSchema.model_validate(
-                    stock_item,
-                    update={"sparkline_data": sparkline_data}
-                )
+            stock_data = stock_item.__dict__ | {
+                "sparkline_data": sparkline_data,
+                "logo_url": logos.get(stock_item.symbol)
+            }
+
+            stocks_with_data.append(
+                WatchlistStockSchema.model_validate(stock_data)
             )
 
         return UserWatchlistSchema.model_validate(
-            watchlist.__dict__ | {"stocks": stocks_with_sparkline}
+            watchlist.__dict__ | {"stocks": stocks_with_data}
         )
 
     async def update_user_watchlist(
