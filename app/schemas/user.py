@@ -111,6 +111,24 @@ class AdminSchoolInvite(BaseModel):
 class TeacherUpdate(BaseModel):
     level: CourseLevelEnum
 
+class UserAdminUpdate(BaseModel):
+    """Schema for administrative user updates."""
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+    @field_validator("full_name")
+    def not_empty(cls, v):
+        if v is not None and not v.strip():
+            raise ValueError("Full name cannot be empty")
+        return v
+
+    @model_validator(mode='before')
+    @classmethod
+    def at_least_one_value(cls, data: Any):
+        if isinstance(data, dict) and not any(data.values()):
+            raise ValueError("At least one field must be provided for update")
+        return data
+
 
 class BulkInviteRequest(BaseModel):
     course_ids: Optional[List[int]] = None

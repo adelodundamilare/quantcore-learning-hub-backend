@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.schemas.school import School, AdminSchoolDataSchema
 from app.services.school import school_service
 from app.schemas.response import APIResponse
-from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, User as UserSchema, UserContext, StudentProfile
+from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, User as UserSchema, UserContext, StudentProfile, UserAdminUpdate
 from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
@@ -135,3 +135,30 @@ async def get_school_teacher_profile(
         db, school_id=school_id, teacher_id=teacher_id, current_user_context=context
     )
     return APIResponse(message="Teacher profile retrieved successfully", data=teacher_profile)
+
+@router.delete("/{school_id}/users/{user_id}", response_model=APIResponse[dict])
+def remove_user_from_school(
+    school_id: int,
+    user_id: int,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Remove a user from a school (soft delete)."""
+    result = user_service.remove_user_from_school(
+        db, school_id=school_id, user_id=user_id, current_user_context=context
+    )
+    return APIResponse(message=result["message"])
+
+@router.put("/{school_id}/users/{user_id}", response_model=APIResponse[UserSchema])
+def update_user_details_admin(
+    school_id: int,
+    user_id: int,
+    update_data: UserAdminUpdate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Update user details administratively within a school context."""
+    updated_user = user_service.update_user_details_admin(
+        db, school_id=school_id, user_id=user_id, update_data=update_data.model_dump(exclude_unset=True), current_user_context=context
+    )
+    return APIResponse(message="User details updated successfully", data=UserSchema.model_validate(updated_user))

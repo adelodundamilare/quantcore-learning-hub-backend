@@ -305,4 +305,16 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             query = query.filter(User.created_at <= end_date)
         return query.count()
 
+    def get_school_admin_count(self, db: Session, *, school_id: int) -> int:
+        """Get the count of active school administrators for a school."""
+        school_admin_role = db.query(Role).filter(Role.name == "school_admin").first()
+        if not school_admin_role:
+            return 0
+
+        return db.query(user_school_association).filter(
+            user_school_association.c.school_id == school_id,
+            user_school_association.c.role_id == school_admin_role.id,
+            user_school_association.c.deleted_at == None
+        ).count()
+
 user = CRUDUser(User)

@@ -2,7 +2,7 @@ from sqlalchemy import Boolean, Column, String, Integer, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.models.user_school_association import user_school_association
+from app.models.user_school_association import UserSchoolAssociation
 from app.models.course import course_teachers_association, course_students_association
 
 class User(Base):
@@ -21,11 +21,15 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Many-to-many relationship with School via the association table
+    # Many-to-many relationship with School via the association model
+    school_associations = relationship("UserSchoolAssociation", back_populates="user")
     schools = relationship(
         "School",
-        secondary=user_school_association,
-        back_populates="users"
+        secondary="user_school_association",
+        back_populates="users",
+        primaryjoin="User.id == UserSchoolAssociation.user_id",
+        secondaryjoin="School.id == UserSchoolAssociation.school_id",
+        viewonly=True
     )
     teaching_courses = relationship("Course", secondary=course_teachers_association, back_populates="teachers")
     enrolled_courses = relationship("Course", secondary=course_students_association, back_populates="students")
@@ -39,5 +43,3 @@ class User(Base):
     trade_orders = relationship("TradeOrder", back_populates="user", cascade="all, delete-orphan")
     stripe_customer = relationship("StripeCustomer", back_populates="user", uselist=False, cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
-
-

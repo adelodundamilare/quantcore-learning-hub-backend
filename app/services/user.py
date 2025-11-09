@@ -246,6 +246,90 @@ class UserService:
         updated_teacher = crud_user.get(db, id=teacher_id)
         return updated_teacher
 
+    def remove_user_from_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> dict:
+        """Remove a user from a school (soft delete)."""
+        permission_helper.require_school_management_permission(current_user_context, school_id)
+
+        if current_user_context.user.id == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot remove yourself from the school."
+            )
+
+        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in this school."
+            )
+
+        if association.role.name == RoleEnum.SCHOOL_ADMIN:
+            admin_count = crud_user.get_school_admin_count(db, school_id=school_id)
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot remove the last school administrator."
+                )
+
+        association.deleted_at = datetime.utcnow()
+        db.add(association)
+        db.commit()
+
+        courses = crud_course.get_multi_by_school(db, school_id=school_id)
+        for course in courses:
+            try:
+                course_service.unenroll_student(db, course_id=course.id, user_id=user_id, current_user_context=current_user_context)
+            except HTTPException:
+                pass
+
+        notification_service.create_notification(
+            db,
+            user_id=user_id,
+            message=f"You have been removed from {current_user_context.school.name}.",
+            notification_type="school_removal",
+            link=f"/schools"
+        )
+
+        return {"message": "User removed from school successfully"}
+
+    def update_user_details_admin(self, db: Session, school_id: int, user_id: int, update_data: dict, current_user_context: UserContext) -> UserSchema:
+        """Update user details administratively within a school context."""
+        permission_helper.require_school_management_permission(current_user_context, school_id)
+
+        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in this school."
+            )
+
+        user = crud_user.get(db, id=user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found."
+            )
+
+        if update_data.get('email') and update_data['email'] != user.email:
+            existing_user = crud_user.get_by_email(db, email=update_data['email'])
+            if existing_user and existing_user.id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email already in use by another user."
+                )
+
+        updated_user = crud_user.update(db, db_obj=user, obj_in=update_data)
+
+        notification_service.create_notification(
+            db,
+            user_id=user_id,
+            message=f"Your profile details have been updated by an administrator.",
+            notification_type="profile_update",
+            link=f"/profile"
+        )
+
+        return updated_user
+
     def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         if not permission_helper.is_super_admin(current_user_context):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this resource.")
