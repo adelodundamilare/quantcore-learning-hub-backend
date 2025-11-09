@@ -129,6 +129,33 @@ class UserAdminUpdate(BaseModel):
             raise ValueError("At least one field must be provided for update")
         return data
 
+class UserRoleUpdate(BaseModel):
+    """Schema for updating a user's role within a school."""
+    role_name: RoleEnum
+    level: Optional[CourseLevelEnum] = None
+
+    model_config = ConfigDict(
+        use_enum_values=True,
+        json_schema_extra={
+            "example": {
+                "role_name": "teacher",
+                "level": "intermediate"
+            }
+        }
+    )
+
+class UserStatusUpdate(BaseModel):
+    """Schema for updating a user's active status."""
+    is_active: bool
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "is_active": False
+            }
+        }
+    )
+
 
 class BulkInviteRequest(BaseModel):
     course_ids: Optional[List[int]] = None

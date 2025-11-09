@@ -1,7 +1,7 @@
 from typing import Any, Optional, List
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.constants import CourseLevelEnum
 from app.crud.base import CRUDBase
 from app.models.course_enrollment import CourseEnrollment
@@ -45,7 +45,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
     def get_association_by_user_and_school(self, db: Session, *, user_id: int, school_id: int) -> Any | None:
         return db.query(user_school_association).filter(
             user_school_association.c.user_id == user_id,
-            user_school_association.c.school_id == school_id
+            user_school_association.c.school_id == school_id,
+            user_school_association.c.deleted_at == None
         ).first()
 
     def get_users_by_school_and_role(self, db: Session, *, school_id: int, role_id: int, skip: int = 0, limit: int = 100) -> List[User]:
@@ -54,7 +55,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id == role_id
+                user_school_association.c.role_id == role_id,
+                user_school_association.c.deleted_at == None
             )
             .offset(skip)
             .limit(limit)
@@ -82,7 +84,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id != student_role.id
+                user_school_association.c.role_id != student_role.id,
+                user_school_association.c.deleted_at == None
             )
             .offset(skip)
             .limit(limit)
@@ -316,5 +319,32 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             user_school_association.c.role_id == school_admin_role.id,
             user_school_association.c.deleted_at == None
         ).count()
+
+    def update_user_password(self, db: Session, *, user: User, hashed_password: str) -> User:
+        """Update a user's password hash."""
+        user.hashed_password = hashed_password
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def soft_delete_user_association(self, db: Session, *, user_id: int, school_id: int) -> None:
+        """Soft delete a user-school association."""
+        stmt = user_school_association.update().\
+        where(user_school_association.c.user_id == user_id).\
+        where(user_school_association.c.school_id == school_id).\
+        where(user_school_association.c.deleted_at == None).\
+        values(deleted_at=datetime.now(timezone.utc))
+
+        db.execute(stmt)
+        db.commit()
+
+    def update_user_active_status(self, db: Session, *, user: User, is_active: bool) -> User:
+        """Update a user's active status."""
+        user.is_active = is_active
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
 
 user = CRUDUser(User)

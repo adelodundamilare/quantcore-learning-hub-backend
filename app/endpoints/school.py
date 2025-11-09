@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.schemas.school import School, AdminSchoolDataSchema
 from app.services.school import school_service
 from app.schemas.response import APIResponse
-from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, User as UserSchema, UserContext, StudentProfile, UserAdminUpdate
+from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, User as UserSchema, UserContext, StudentProfile, UserAdminUpdate, UserRoleUpdate, UserStatusUpdate
 from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
@@ -162,3 +162,31 @@ def update_user_details_admin(
         db, school_id=school_id, user_id=user_id, update_data=update_data.model_dump(exclude_unset=True), current_user_context=context
     )
     return APIResponse(message="User details updated successfully", data=UserSchema.model_validate(updated_user))
+
+@router.patch("/{school_id}/users/{user_id}/role", response_model=APIResponse[UserSchema])
+def update_user_role(
+    school_id: int,
+    user_id: int,
+    update_data: UserRoleUpdate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Update a user's role within a school."""
+    updated_user = user_service.update_user_role(
+        db, school_id=school_id, user_id=user_id, update_data=update_data, current_user_context=context
+    )
+    return APIResponse(message="User role updated successfully", data=UserSchema.model_validate(updated_user))
+
+@router.patch("/{school_id}/users/{user_id}/status", response_model=APIResponse[UserSchema])
+def update_user_status(
+    school_id: int,
+    user_id: int,
+    update_data: UserStatusUpdate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    """Update a user's active status within a school."""
+    updated_user = user_service.update_user_status(
+        db, school_id=school_id, user_id=user_id, update_data=update_data, current_user_context=context
+    )
+    return APIResponse(message="User status updated successfully", data=UserSchema.model_validate(updated_user))

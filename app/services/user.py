@@ -27,7 +27,10 @@ from app.utils.permission import PermissionHelper as permission_helper
 from app.services.notification import notification_service
 from app.services.course import course_service
 from app.services.trading import trading_service
+from app.utils.logger import setup_logger
 import re
+
+logger = setup_logger("user_service", "user_service.log")
 
 class UserService:
 
@@ -36,10 +39,7 @@ class UserService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password.")
 
         hashed_password = get_password_hash(new_password)
-        user.hashed_password = hashed_password
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        updated_user = crud_user.update_user_password(db, user=user, hashed_password=hashed_password)
 
         EmailService.send_email(
             to_email=user.email,
@@ -48,7 +48,7 @@ class UserService:
             template_context={'user_name': user.full_name}
         )
 
-        return user
+        return updated_user
 
     def get_students_for_school(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         permission_helper.require_school_view_permission(current_user_context, school_id)
@@ -263,7 +263,8 @@ class UserService:
                 detail="User not found in this school."
             )
 
-        if association.role.name == RoleEnum.SCHOOL_ADMIN:
+        school_admin_role = crud_role.get_by_name(db, name=RoleEnum.SCHOOL_ADMIN)
+        if association.role_id == school_admin_role.id:
             admin_count = crud_user.get_school_admin_count(db, school_id=school_id)
             if admin_count <= 1:
                 raise HTTPException(
@@ -271,11 +272,13 @@ class UserService:
                     detail="Cannot remove the last school administrator."
                 )
 
-        association.deleted_at = datetime.utcnow()
-        db.add(association)
-        db.commit()
+        user = crud_user.get(db, id=user_id)
 
-        courses = crud_course.get_multi_by_school(db, school_id=school_id)
+        crud_user.soft_delete_user_association(db, user_id=user_id, school_id=school_id)
+
+        logger.info(f"User {user_id} ({user.email}) removed from school {school_id} by admin {current_user_context.user.id} ({current_user_context.user.email})")
+
+        courses = crud_course.get_courses_by_school(db, school_id=school_id)
         for course in courses:
             try:
                 course_service.unenroll_student(db, course_id=course.id, user_id=user_id, current_user_context=current_user_context)
@@ -291,6 +294,97 @@ class UserService:
         )
 
         return {"message": "User removed from school successfully"}
+
+    def update_user_role(self, db: Session, school_id: int, user_id: int, update_data, current_user_context: UserContext) -> UserSchema:
+        """Update a user's role within a school."""
+        permission_helper.require_school_management_permission(current_user_context, school_id)
+
+        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in this school."
+            )
+
+        user = crud_user.get(db, id=user_id)
+        old_role = association.role.name
+
+        new_role = crud_role.get_by_name(db, name=update_data.role_name)
+        if not new_role:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Role '{update_data.role_name}' not found. Please seed the database."
+            )
+
+        existing_association = crud_user.get_association_by_user_school_role(
+            db, user_id=user_id, school_id=school_id, role_id=new_role.id
+        )
+        if existing_association:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"User already has the role '{update_data.role_name}' in this school."
+            )
+
+        crud_user.update_association(
+            db, user_id=user_id, school_id=school_id,
+            role_id=new_role.id, level=update_data.level
+        )
+
+        logger.info(f"User {user_id} ({user.email}) role changed from {old_role} to {new_role.name} in school {school_id} by admin {current_user_context.user.id} ({current_user_context.user.email})")
+
+        notification_service.create_notification(
+            db,
+            user_id=user_id,
+            message=f"Your role has been updated to {new_role.name} in {current_user_context.school.name}.",
+            notification_type="role_update",
+            link=f"/schools/{school_id}"
+        )
+
+        updated_user = crud_user.get(db, id=user_id)
+        return updated_user
+
+    def update_user_status(self, db: Session, school_id: int, user_id: int, update_data, current_user_context: UserContext) -> UserSchema:
+        """Update a user's active status within a school."""
+        permission_helper.require_school_management_permission(current_user_context, school_id)
+
+        user = crud_user.get(db, id=user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found."
+            )
+
+        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in this school."
+            )
+
+        if not update_data.is_active and association.role.name == RoleEnum.SCHOOL_ADMIN:
+            admin_count = crud_user.get_school_admin_count(db, school_id=school_id)
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate the last school administrator."
+                )
+
+        old_status = user.is_active
+
+        updated_user = crud_user.update_user_active_status(db, user=user, is_active=update_data.is_active)
+
+        status_text = "activated" if update_data.is_active else "deactivated"
+        logger.info(f"User {user_id} ({user.email}) {status_text} in school {school_id} by admin {current_user_context.user.id} ({current_user_context.user.email})")
+
+        notification_service.create_notification(
+            db,
+            user_id=user_id,
+            message=f"Your account has been {status_text} in {current_user_context.school.name}.",
+            notification_type="status_update",
+            link=f"/schools/{school_id}"
+        )
+
+        return user
 
     def update_user_details_admin(self, db: Session, school_id: int, user_id: int, update_data: dict, current_user_context: UserContext) -> UserSchema:
         """Update user details administratively within a school context."""
@@ -318,7 +412,21 @@ class UserService:
                     detail="Email already in use by another user."
                 )
 
+        # Get old values for logging
+        old_email = user.email
+        old_full_name = user.full_name
+
         updated_user = crud_user.update(db, db_obj=user, obj_in=update_data)
+
+        # Audit logging
+        changes = []
+        if update_data.get('email') and update_data['email'] != old_email:
+            changes.append(f"email: {old_email} -> {update_data['email']}")
+        if update_data.get('full_name') and update_data['full_name'] != old_full_name:
+            changes.append(f"name: {old_full_name} -> {update_data['full_name']}")
+
+        if changes:
+            logger.info(f"User {user_id} details updated in school {school_id} by admin {current_user_context.user.id} ({current_user_context.user.email}): {', '.join(changes)}")
 
         notification_service.create_notification(
             db,
