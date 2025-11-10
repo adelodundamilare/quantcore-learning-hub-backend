@@ -10,7 +10,7 @@ from app.utils.logger import setup_logger
 from app.models.user import User
 from app.services.email import EmailService
 
-from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus
+from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus, PlatformUserInvite
 from typing import List
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
@@ -212,6 +212,18 @@ async def delete_account(
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise
+
+@router.post("/admin/invite", response_model=APIResponse[User], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+def invite_platform_user(
+    *,
+    db: Session = Depends(deps.get_transactional_db),
+    invite_in: PlatformUserInvite
+):
+    """Super admin invites platform-level users (admin or member)."""
+    invited_user = user_service.invite_platform_user(
+        db, invite_in=invite_in
+    )
+    return APIResponse(message="Platform user invited successfully", data=User.model_validate(invited_user))
 
 @router.get("/users/admins", response_model=APIResponse[List[User]])
 def get_admin_users(

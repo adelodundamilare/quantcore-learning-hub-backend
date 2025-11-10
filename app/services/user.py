@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime
 import io
 
+from app.core.constants import ADMIN_SCHOOL_NAME
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
@@ -437,6 +438,70 @@ class UserService:
         )
 
         return updated_user
+
+    def invite_platform_user(self, db: Session, *, invite_in) -> UserSchema:
+        """Invite a platform-level user (admin or member) by super admin."""
+        role_to_assign = crud_role.get_by_name(db, name=invite_in.role_name)
+        if not role_to_assign:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Role '{invite_in.role_name}' not found. Please seed the database.",
+            )
+
+        existing_user = crud_user.get_by_email(db, email=invite_in.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user with this email already exists.",
+            )
+
+        admin_school = crud_school.get_by_name(db, name=ADMIN_SCHOOL_NAME)
+        if not admin_school:
+            admin_school = crud_school.create(db, obj_in={"name": ADMIN_SCHOOL_NAME}, commit=True)
+
+        temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
+        hashed_password = get_password_hash(temp_password)
+
+        user_in = {
+            "full_name": invite_in.full_name,
+            "email": invite_in.email,
+            "hashed_password": hashed_password,
+            "is_active": True
+        }
+
+        try:
+            new_user = crud_user.create(db, obj_in=user_in, commit=False)
+            crud_user.add_user_to_school(
+                db, user=new_user, school=admin_school, role=role_to_assign
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"An error occurred during the invitation process: {e}",
+            )
+
+        EmailService.send_email(
+            to_email=new_user.email,
+            subject=f"Welcome! Your Platform {role_to_assign.name.title()} Account",
+            template_name="new_account_invite.html",
+            template_context={
+                'user_name': new_user.full_name,
+                'email': new_user.email,
+                'school_name': admin_school.name,
+                'role_name': role_to_assign.name,
+                'password': temp_password
+            }
+        )
+
+        notification_service.create_notification(
+            db,
+            user_id=new_user.id,
+            message=f"You have been invited as a platform {role_to_assign.name}.",
+            notification_type="platform_invitation",
+            link=f"/admin"
+        )
+
+        return new_user
 
     def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
         if not permission_helper.is_super_admin(current_user_context):
