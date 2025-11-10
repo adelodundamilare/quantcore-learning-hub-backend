@@ -595,7 +595,33 @@ class StripeService:
         return result
 
     async def update_invoice_status(self, invoice_id: str, status: str) -> stripe.Invoice:
-        return await self._make_request(stripe.Invoice.modify, invoice_id, status=status)
+        current_invoice = await self._make_request(stripe.Invoice.retrieve, invoice_id)
+
+        current_status = current_invoice.status
+        target_status = status
+
+        if current_status == 'draft' and target_status == 'open':
+            return await self._make_request(stripe.Invoice.finalize_invoice, invoice_id)
+
+        elif current_status == 'open' and target_status == 'paid':
+            return await self._make_request(stripe.Invoice.pay, invoice_id)
+
+        elif current_status == 'open' and target_status == 'void':
+            return await self._make_request(stripe.Invoice.void_invoice, invoice_id)
+
+        elif current_status == target_status:
+            return current_invoice
+
+        else:
+            valid_transitions = [
+                "draft → open (finalize)",
+                "open → paid (pay)",
+                "open → void (void)"
+            ]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status transition from '{current_status}' to '{target_status}'. Valid transitions: {', '.join(valid_transitions)}"
+            )
 
     async def delete_invoice(self, db: Session, stripe_invoice_id: str) -> stripe.Invoice:
         """Soft delete an invoice by voiding it in Stripe and marking as deleted in DB."""

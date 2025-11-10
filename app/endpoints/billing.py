@@ -7,6 +7,7 @@ from app.schemas.response import APIResponse
 from app.schemas.user import UserContext
 from app.utils import deps
 from app.services.stripe import stripe_service
+from app.crud.invoice import invoice as crud_invoice
 from app.schemas.billing import (
     StripeCustomerSchema,
     SubscriptionCreate,
@@ -332,8 +333,13 @@ async def update_invoice_status(
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    invoice = await stripe_service.update_invoice_status(invoice_id, status_in.status.value)
-    return APIResponse(message="Invoice status updated successfully", data=invoice)
+    stripe_invoice = await stripe_service.update_invoice_status(invoice_id, status_in.status.value)
+
+    db_invoice = crud_invoice.get_by_stripe_invoice_id(db, stripe_invoice_id=invoice_id)
+    if db_invoice:
+        crud_invoice.update(db, db_obj=db_invoice, obj_in={"status": stripe_invoice.status})
+
+    return APIResponse(message="Invoice status updated successfully", data=stripe_invoice)
 
 @router.delete("/admin/invoices/{stripe_invoice_id}", response_model=APIResponse[dict], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 async def delete_invoice(
