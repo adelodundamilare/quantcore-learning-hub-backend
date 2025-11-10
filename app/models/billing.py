@@ -44,6 +44,7 @@ class Invoice(Base):
     status = Column(String, nullable=False)  # draft, open, paid, uncollectible, void
     description = Column(String, nullable=True)
     due_date = Column(DateTime(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)  # Soft delete
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -597,6 +597,24 @@ class StripeService:
     async def update_invoice_status(self, invoice_id: str, status: str) -> stripe.Invoice:
         return await self._make_request(stripe.Invoice.modify, invoice_id, status=status)
 
+    async def delete_invoice(self, db: Session, invoice_id: int) -> stripe.Invoice:
+        """Soft delete an invoice by voiding it in Stripe and marking as deleted in DB."""
+        db_invoice = crud_invoice.get(db, id=invoice_id)
+        if not db_invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+
+        try:
+            if db_invoice.status == 'draft':
+                stripe_invoice = await self._make_request(stripe.Invoice.delete, db_invoice.stripe_invoice_id)
+            else:
+                stripe_invoice = await self._make_request(stripe.Invoice.void_invoice, db_invoice.stripe_invoice_id)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to void/delete invoice in Stripe: {str(e)}")
+
+        crud_invoice.soft_delete(db, invoice=db_invoice)
+
+        return stripe_invoice
+
     async def get_school_invoices(self, db: Session, context: UserContext) -> List[SchoolInvoiceSchema]:
         if not context.school:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must be assigned to a school.")
