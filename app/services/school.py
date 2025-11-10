@@ -99,7 +99,7 @@ class SchoolService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Super Admin can access this report.")
 
         schools_data = crud_school.get_admin_school_data(db, skip=skip, limit=limit)
-        
+
         total_schools = crud_school.get_all_schools_count(db)
 
         page = (skip // limit) + 1 if limit > 0 else 1
@@ -116,5 +116,25 @@ class SchoolService:
             has_next=has_next,
             has_previous=has_previous
         )
+
+    def get_all_schools_admin(self, db: Session, skip: int = 0, limit: int = 100) -> list[School]:
+        """Get all schools for super admin management."""
+        return crud_school.get_multi(db=db, skip=skip, limit=limit)
+
+    def update_school_admin(self, db: Session, school_id: int, school_in) -> School:
+        """Update school details by super admin."""
+        school = crud_school.get(db=db, id=school_id)
+        if not school:
+            raise HTTPException(status_code=404, detail="School not found")
+
+        return crud_school.update(db=db, db_obj=school, obj_in=school_in)
+
+    def delete_school_admin(self, db: Session, school_id: int) -> School:
+        """Soft delete a school by super admin."""
+        school = crud_school.get(db=db, id=school_id)
+        if not school:
+            raise HTTPException(status_code=404, detail="School not found")
+
+        return crud_school.delete(db=db, id=school_id)
 
 school_service = SchoolService()

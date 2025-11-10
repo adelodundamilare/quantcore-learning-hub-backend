@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.schemas.school import School, AdminSchoolDataSchema
+from app.schemas.school import School, AdminSchoolDataSchema, SchoolUpdate
 from app.services.school import school_service
 from app.schemas.response import APIResponse
 from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, User as UserSchema, UserContext, StudentProfile, UserAdminUpdate, UserRoleUpdate, UserStatusUpdate
@@ -9,6 +9,7 @@ from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
 from app.crud.base import PaginatedResponse
+from app.core.constants import RoleEnum
 
 router = APIRouter()
 
@@ -190,3 +191,35 @@ def update_user_status(
         db, school_id=school_id, user_id=user_id, update_data=update_data, current_user_context=context
     )
     return APIResponse(message="User status updated successfully", data=UserSchema.model_validate(updated_user))
+
+@router.get("/admin/schools", response_model=APIResponse[List[School]], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+def get_all_schools_admin(
+    *,
+    db: Session = Depends(deps.get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    """Get all schools for super admin management."""
+    schools = school_service.get_all_schools_admin(db=db, skip=skip, limit=limit)
+    return APIResponse(message="Schools retrieved successfully", data=[School.model_validate(school) for school in schools])
+
+@router.put("/admin/schools/{school_id}", response_model=APIResponse[School], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+def update_school_admin(
+    *,
+    school_id: int,
+    school_in: SchoolUpdate,
+    db: Session = Depends(deps.get_transactional_db)
+):
+    """Update school details by super admin."""
+    updated_school = school_service.update_school_admin(db=db, school_id=school_id, school_in=school_in)
+    return APIResponse(message="School updated successfully", data=School.model_validate(updated_school))
+
+@router.delete("/admin/schools/{school_id}", response_model=APIResponse[dict], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+def delete_school_admin(
+    *,
+    school_id: int,
+    db: Session = Depends(deps.get_transactional_db)
+):
+    """Soft delete a school by super admin."""
+    school_service.delete_school_admin(db=db, school_id=school_id)
+    return APIResponse(message="School deleted successfully")
