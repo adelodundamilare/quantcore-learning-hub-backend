@@ -335,13 +335,13 @@ async def update_invoice_status(
     invoice = await stripe_service.update_invoice_status(invoice_id, status_in.status.value)
     return APIResponse(message="Invoice status updated successfully", data=invoice)
 
-@router.delete("/admin/invoices/{invoice_id}", response_model=APIResponse[dict], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+@router.delete("/admin/invoices/{stripe_invoice_id}", response_model=APIResponse[dict], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 async def delete_invoice(
-    invoice_id: int,
+    stripe_invoice_id: str,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    await stripe_service.delete_invoice(db, invoice_id)
+    await stripe_service.delete_invoice(db, stripe_invoice_id)
     return APIResponse(message="Invoice deleted successfully")
 
 @router.get("/school/invoices", response_model=APIResponse[List[SchoolInvoiceSchema]])

@@ -597,9 +597,9 @@ class StripeService:
     async def update_invoice_status(self, invoice_id: str, status: str) -> stripe.Invoice:
         return await self._make_request(stripe.Invoice.modify, invoice_id, status=status)
 
-    async def delete_invoice(self, db: Session, invoice_id: int) -> stripe.Invoice:
+    async def delete_invoice(self, db: Session, stripe_invoice_id: str) -> stripe.Invoice:
         """Soft delete an invoice by voiding it in Stripe and marking as deleted in DB."""
-        db_invoice = crud_invoice.get(db, id=invoice_id)
+        db_invoice = crud_invoice.get_by_stripe_invoice_id(db, stripe_invoice_id=stripe_invoice_id)
         if not db_invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
 
