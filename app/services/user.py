@@ -577,8 +577,12 @@ class UserService:
             for course in teacher_courses
         )
 
+        association = crud_user.get_association_by_user_and_school(db, user_id=teacher_id, school_id=school_id)
+        teacher_level = association.level if association else None
+
         user_data = UserSchema.model_validate(user).model_dump()
         user_data["num_students_taught"] = total_students_taught
+        user_data["level"] = teacher_level
 
         return TeacherProfile.model_validate(user_data)
 

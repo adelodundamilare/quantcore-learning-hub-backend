@@ -62,6 +62,7 @@ class StudentProfile(User):
 class TeacherProfile(User):
     """Schema for a teacher's profile, including the number of students taught."""
     num_students_taught: int
+    level: Optional[CourseLevelEnum] = None
 
 class UserContext(BaseModel):
     """Represents a user's role within a specific school."""

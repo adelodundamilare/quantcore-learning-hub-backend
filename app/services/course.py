@@ -382,9 +382,8 @@ class CourseService:
             try:
                 course = crud_course.get(db, id=course_id)
                 teacher_user = crud_user.get(db, id=teacher_id)
-                if not permission_helper.is_teacher_of_course(teacher_user, course):
-                    crud_course.add_teacher_to_course(db, course=course, user=teacher_user)
-                    assigned_count += 1
+                crud_course.add_teacher_to_course(db, course=course, user=teacher_user)
+                assigned_count += 1
             except HTTPException:
                 pass
 
