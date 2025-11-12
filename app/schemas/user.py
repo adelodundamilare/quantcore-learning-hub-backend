@@ -214,7 +214,6 @@ class BulkInviteResult(BaseModel):
 
 
 class BulkInviteStatus(BaseModel):
-    """Schema for bulk invite processing status."""
     task_id: str
     status: str  # "processing", "completed", "failed"
     total_rows: int
@@ -227,3 +226,14 @@ class BulkInviteStatus(BaseModel):
     error_message: Optional[str] = None
 
     model_config = ConfigDict(use_enum_values=True)
+
+class StudentCourseUpdate(BaseModel):
+    course_ids: List[int]
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "course_ids": [1, 2, 3, 4]
+            }
+        }
+    )

@@ -289,5 +289,57 @@ class CourseService:
             enriched_courses.append(self._enrich_course_with_progress(db, course_model, current_user_context.user.id))
         return enriched_courses
 
+    def get_student_courses_admin(self, db: Session, student_id: int, current_user_context: UserContext) -> List[CourseSchema]:
+        student_user = crud_user.get(db, id=student_id)
+        if not student_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+
+        permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
+
+        permission_helper.validate_user_role_in_school(db, student_id, current_user_context.school.id, RoleEnum.STUDENT)
+
+        courses = crud_course.get_student_courses(db, user_id=student_id)
+
+        enriched_courses = []
+        for course_model in courses:
+            enriched_courses.append(self._enrich_course_with_progress(db, course_model, student_id))
+
+        return enriched_courses
+
+    def update_student_courses_bulk(self, db: Session, student_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
+        permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
+
+        permission_helper.validate_user_role_in_school(db, student_id, current_user_context.school.id, RoleEnum.STUDENT)
+
+        current_courses = crud_course.get_student_courses(db, user_id=student_id)
+        current_course_ids = {course.id for course in current_courses}
+        target_course_ids = set(course_ids)
+
+        to_enroll = target_course_ids - current_course_ids
+        to_unenroll = current_course_ids - target_course_ids
+
+        enrolled_count = 0
+        unenrolled_count = 0
+
+        for course_id in to_unenroll:
+            try:
+                self.unenroll_student(db, course_id, student_id, current_user_context)
+                unenrolled_count += 1
+            except HTTPException:
+                pass
+
+        for course_id in to_enroll:
+            try:
+                self.enroll_student(db, course_id, student_id, current_user_context)
+                enrolled_count += 1
+            except HTTPException:
+                pass
+
+        return {
+            "enrolled_count": enrolled_count,
+            "unenrolled_count": unenrolled_count,
+            "final_course_count": len(target_course_ids)
+        }
+
 
 course_service = CourseService()
