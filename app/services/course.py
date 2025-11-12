@@ -294,10 +294,6 @@ class CourseService:
         if not student_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
 
-        permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
-
-        permission_helper.validate_user_role_in_school(db, student_id, current_user_context.school.id, RoleEnum.STUDENT)
-
         courses = crud_course.get_student_courses(db, user_id=student_id)
 
         enriched_courses = []
@@ -347,9 +343,6 @@ class CourseService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found.")
 
         permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
-
-        permission_helper.validate_user_role_in_school(db, teacher_id, current_user_context.school.id, RoleEnum.TEACHER)
-
         courses = crud_course.get_teacher_courses(db, user_id=teacher_id)
 
         return [CourseSchema.model_validate(course) for course in courses]
