@@ -341,5 +341,57 @@ class CourseService:
             "final_course_count": len(target_course_ids)
         }
 
+    def get_teacher_courses_admin(self, db: Session, teacher_id: int, current_user_context: UserContext) -> List[CourseSchema]:
+        teacher_user = crud_user.get(db, id=teacher_id)
+        if not teacher_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found.")
+
+        permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
+
+        permission_helper.validate_user_role_in_school(db, teacher_id, current_user_context.school.id, RoleEnum.TEACHER)
+
+        courses = crud_course.get_teacher_courses(db, user_id=teacher_id)
+
+        return [CourseSchema.model_validate(course) for course in courses]
+
+    def update_teacher_courses_bulk(self, db: Session, teacher_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
+        permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
+
+        permission_helper.validate_user_role_in_school(db, teacher_id, current_user_context.school.id, RoleEnum.TEACHER)
+
+        current_courses = crud_course.get_teacher_courses(db, user_id=teacher_id)
+        current_course_ids = {course.id for course in current_courses}
+        target_course_ids = set(course_ids)
+
+        to_assign = target_course_ids - current_course_ids
+        to_remove = current_course_ids - target_course_ids
+
+        assigned_count = 0
+        removed_count = 0
+
+        for course_id in to_remove:
+            try:
+                course = crud_course.get(db, id=course_id)
+                teacher_user = crud_user.get(db, id=teacher_id)
+                crud_course.remove_teacher_from_course(db, course=course, user=teacher_user)
+                removed_count += 1
+            except HTTPException:
+                pass
+
+        for course_id in to_assign:
+            try:
+                course = crud_course.get(db, id=course_id)
+                teacher_user = crud_user.get(db, id=teacher_id)
+                if not permission_helper.is_teacher_of_course(teacher_user, course):
+                    crud_course.add_teacher_to_course(db, course=course, user=teacher_user)
+                    assigned_count += 1
+            except HTTPException:
+                pass
+
+        return {
+            "assigned_count": assigned_count,
+            "removed_count": removed_count,
+            "final_course_count": len(target_course_ids)
+        }
 
 course_service = CourseService()

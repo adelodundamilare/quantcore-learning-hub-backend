@@ -237,3 +237,14 @@ class StudentCourseUpdate(BaseModel):
             }
         }
     )
+
+class TeacherCourseUpdate(BaseModel):
+    course_ids: List[int]
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "course_ids": [1, 2, 3, 4]
+            }
+        }
+    )

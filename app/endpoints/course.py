@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.schemas.user import User, StudentCourseUpdate
+from app.schemas.user import User, StudentCourseUpdate, TeacherCourseUpdate
 from app.schemas.response import APIResponse
 from app.utils import deps
 from app.schemas.course import Course, CourseCreate, CourseUpdate
@@ -178,5 +178,29 @@ def update_student_courses_bulk(
     )
     return APIResponse(
         message=f"Student courses updated: {result['enrolled_count']} enrolled, {result['unenrolled_count']} unenrolled",
+        data=result
+    )
+
+@router.get("/teachers/{teacher_id}/courses", response_model=APIResponse[List[Course]])
+def get_teacher_courses_admin(
+    teacher_id: int,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    courses = course_service.get_teacher_courses_admin(db, teacher_id=teacher_id, current_user_context=context)
+    return APIResponse(message="Teacher courses retrieved successfully", data=[Course.model_validate(c) for c in courses])
+
+@router.put("/teachers/{teacher_id}/courses", response_model=APIResponse[dict])
+def update_teacher_courses_bulk(
+    teacher_id: int,
+    course_update: TeacherCourseUpdate,
+    db: Session = Depends(deps.get_transactional_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    result = course_service.update_teacher_courses_bulk(
+        db, teacher_id=teacher_id, course_ids=course_update.course_ids, current_user_context=context
+    )
+    return APIResponse(
+        message=f"Teacher courses updated: {result['assigned_count']} assigned, {result['removed_count']} removed",
         data=result
     )
