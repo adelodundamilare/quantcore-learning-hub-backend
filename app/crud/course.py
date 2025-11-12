@@ -57,12 +57,17 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             self._query_active(db)
             .join(course_teachers_association, Course.id == course_teachers_association.c.course_id, isouter=True)
             .join(course_students_association, Course.id == course_students_association.c.course_id, isouter=True)
+            .join(User, or_(
+                course_teachers_association.c.user_id == User.id,
+                course_students_association.c.user_id == User.id
+            ), isouter=True)
             .filter(
                 or_(
                     course_teachers_association.c.user_id == user_id,
                     course_students_association.c.user_id == user_id
                 )
             )
+            .filter(User.deleted_at == None)
             .distinct()
             .all()
         )
@@ -71,7 +76,9 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         return (
             self._query_active(db)
             .join(course_teachers_association)
+            .join(User, course_teachers_association.c.user_id == User.id)
             .filter(course_teachers_association.c.user_id == user_id)
+            .filter(User.deleted_at == None)
             .all()
         )
 
@@ -79,7 +86,9 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         return (
             self._query_active(db)
             .join(course_students_association)
+            .join(User, course_students_association.c.user_id == User.id)
             .filter(course_students_association.c.user_id == user_id)
+            .filter(User.deleted_at == None)
             .all()
         )
 

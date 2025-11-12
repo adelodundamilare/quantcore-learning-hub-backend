@@ -249,3 +249,12 @@ class TeacherCourseUpdate(BaseModel):
             }
         }
     )
+
+class AdminUserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: str
+    avatar: Optional[str] = None
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)

@@ -35,19 +35,25 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
         return [{"school": school, "role": role} for school, role in results]
 
-    def get_association_by_user_school_role(self, db: Session, *, user_id: int, school_id: int, role_id: int) -> Any | None:
-        return db.query(user_school_association).filter(
+    def get_association_by_user_school_role(self, db: Session, *, user_id: int, school_id: int, role_id: int) -> tuple[Role, Any] | None:
+        result = db.query(Role, user_school_association).join(
+            user_school_association, user_school_association.c.role_id == Role.id
+        ).filter(
             user_school_association.c.user_id == user_id,
             user_school_association.c.school_id == school_id,
             user_school_association.c.role_id == role_id
         ).first()
+        return result
 
-    def get_association_by_user_and_school(self, db: Session, *, user_id: int, school_id: int) -> Any | None:
-        return db.query(user_school_association).filter(
+    def get_association_by_user_and_school(self, db: Session, *, user_id: int, school_id: int) -> tuple[Role, Any] | None:
+        result = db.query(Role, user_school_association).join(
+            user_school_association, user_school_association.c.role_id == Role.id
+        ).filter(
             user_school_association.c.user_id == user_id,
             user_school_association.c.school_id == school_id,
             user_school_association.c.deleted_at == None
         ).first()
+        return result
 
     def get_users_by_school_and_role(self, db: Session, *, school_id: int, role_id: int, skip: int = 0, limit: int = 100) -> List[User]:
         return (
@@ -63,9 +69,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .all()
         )
 
-    def get_users_by_role_names(self, db: Session, *, role_names: List[str], skip: int = 0, limit: int = 100) -> List[User]:
+    def get_users_by_role_names(self, db: Session, *, role_names: List[str], skip: int = 0, limit: int = 100) -> List[tuple[User, Role]]:
         return (
-            db.query(User)
+            db.query(User, Role)
             .join(user_school_association, User.id == user_school_association.c.user_id)
             .join(Role, user_school_association.c.role_id == Role.id)
             .filter(Role.name.in_(role_names))
@@ -101,12 +107,18 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         )
         db.execute(stmt)
 
-    def update_association(self, db: Session, *, user_id: int, school_id: int, level: CourseLevelEnum) -> None:
-        stmt = user_school_association.update().\
-            where(user_school_association.c.user_id == user_id).\
-            where(user_school_association.c.school_id == school_id).\
-            values(level=level)
-        db.execute(stmt)
+    def update_association(self, db: Session, *, user_id: int, school_id: int, role_id: Optional[int] = None, level: Optional[CourseLevelEnum] = None) -> None:
+        values = {}
+        if role_id is not None:
+            values['role_id'] = role_id
+        if level is not None:
+            values['level'] = level
+        if values:
+            stmt = user_school_association.update().\
+                where(user_school_association.c.user_id == user_id).\
+                where(user_school_association.c.school_id == school_id).\
+                values(**values)
+            db.execute(stmt)
 
     def get_users_by_school_and_role_count(self, db: Session, *, school_id: int, role_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
         query = db.query(User)\

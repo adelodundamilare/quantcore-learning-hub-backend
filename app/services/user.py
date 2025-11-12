@@ -257,15 +257,18 @@ class UserService:
                 detail="You cannot remove yourself from the school."
             )
 
-        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
-        if not association:
+        association_result = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association_result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found in this school."
             )
 
+        role = association_result[0]
+        association = association_result[1]
+
         school_admin_role = crud_role.get_by_name(db, name=RoleEnum.SCHOOL_ADMIN)
-        if association.role_id == school_admin_role.id:
+        if role.id == school_admin_role.id:
             admin_count = crud_user.get_school_admin_count(db, school_id=school_id)
             if admin_count <= 1:
                 raise HTTPException(
@@ -300,15 +303,16 @@ class UserService:
         """Update a user's role within a school."""
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
-        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
-        if not association:
+        association_result = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association_result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found in this school."
             )
 
-        user = crud_user.get(db, id=user_id)
-        old_role = association.role.name
+        role = association_result[0]
+        association = association_result[1]
+        old_role = role.name
 
         new_role = crud_role.get_by_name(db, name=update_data.role_name)
         if not new_role:
@@ -331,6 +335,7 @@ class UserService:
             role_id=new_role.id, level=update_data.level
         )
 
+        user = crud_user.get(db, id=user_id)
         logger.info(f"User {user_id} ({user.email}) role changed from {old_role} to {new_role.name} in school {school_id} by admin {current_user_context.user.id} ({current_user_context.user.email})")
 
         notification_service.create_notification(
@@ -355,14 +360,17 @@ class UserService:
                 detail="User not found."
             )
 
-        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
-        if not association:
+        association_result = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association_result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found in this school."
             )
 
-        if not update_data.is_active and association.role.name == RoleEnum.SCHOOL_ADMIN:
+        role = association_result[0]
+        association = association_result[1]
+
+        if not update_data.is_active and role.name == RoleEnum.SCHOOL_ADMIN:
             admin_count = crud_user.get_school_admin_count(db, school_id=school_id)
             if admin_count <= 1:
                 raise HTTPException(
@@ -391,12 +399,15 @@ class UserService:
         """Update user details administratively within a school context."""
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
-        association = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
-        if not association:
+        association_result = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
+        if not association_result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found in this school."
             )
+
+        role = association_result[0]
+        association = association_result[1]
 
         user = crud_user.get(db, id=user_id)
         if not user:
@@ -503,12 +514,13 @@ class UserService:
 
         return new_user
 
-    def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[UserSchema]:
+    def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[tuple[UserSchema, str]]:
         if not permission_helper.is_super_admin(current_user_context):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this resource.")
 
         role_names = [role.value for role in roles]
-        return crud_user.get_users_by_role_names(db, role_names=role_names, skip=skip, limit=limit)
+        user_role_pairs = crud_user.get_users_by_role_names(db, role_names=role_names, skip=skip, limit=limit)
+        return [(UserSchema.model_validate(user), role.name) for user, role in user_role_pairs]
 
     def get_user_profile_for_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
@@ -546,7 +558,9 @@ class UserService:
 
         trading_summary = await trading_service.get_trading_account_summary(db, user_id=student_id)
 
-        association = crud_user.get_association_by_user_and_school(db, user_id=student_id, school_id=school_id)
+        association_result = crud_user.get_association_by_user_and_school(db, user_id=student_id, school_id=school_id)
+        role = association_result[0] if association_result else None
+        association = association_result[1] if association_result else None
         student_level = association.level if association else None
 
         pydantic_user = UserSchema.model_validate(user)
@@ -577,7 +591,9 @@ class UserService:
             for course in teacher_courses
         )
 
-        association = crud_user.get_association_by_user_and_school(db, user_id=teacher_id, school_id=school_id)
+        association_result = crud_user.get_association_by_user_and_school(db, user_id=teacher_id, school_id=school_id)
+        role = association_result[0] if association_result else None
+        association = association_result[1] if association_result else None
         teacher_level = association.level if association else None
 
         user_data = UserSchema.model_validate(user).model_dump()
@@ -767,5 +783,17 @@ class UserService:
             )
 
         return self._bulk_invite_tasks[task_id]
+
+    def delete_user_by_admin(self, db: Session, user_id: int) -> UserSchema:
+        """Delete a user by admin (soft delete)."""
+        user = crud_user.get(db, id=user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        deleted_user = crud_user.delete(db, id=user_id)
+
+        logger.info(f"User deleted by admin: {user.email}")
+
+        return UserSchema.model_validate(deleted_user)
 
 user_service = UserService()

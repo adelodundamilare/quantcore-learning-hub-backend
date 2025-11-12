@@ -10,7 +10,7 @@ from app.utils.logger import setup_logger
 from app.models.user import User
 from app.services.email import EmailService
 
-from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus, PlatformUserInvite
+from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus, PlatformUserInvite, AdminUserResponse
 from typing import List
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
@@ -213,6 +213,14 @@ async def delete_account(
         logger.error(f"Error: {str(e)}")
         raise
 
+@router.delete("/users/{user_id}", dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
+def delete_user_by_admin(
+    user_id: int,
+    db: Session = Depends(deps.get_transactional_db)
+):
+    deleted_user = user_service.delete_user_by_admin(db, user_id=user_id)
+    return APIResponse(message="User deleted successfully", data=deleted_user)
+
 @router.post("/admin/invite", response_model=APIResponse[User], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
 def invite_platform_user(
     *,
@@ -225,7 +233,7 @@ def invite_platform_user(
     )
     return APIResponse(message="Platform user invited successfully", data=User.model_validate(invited_user))
 
-@router.get("/users/admins", response_model=APIResponse[List[User]])
+@router.get("/users/admins", response_model=APIResponse[List[AdminUserResponse]])
 def get_admin_users(
     db: Session = Depends(deps.get_db),
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
@@ -233,8 +241,13 @@ def get_admin_users(
     limit: int = 100
 ):
     """Retrieve all users with admin and member roles."""
-    users = user_service.get_users_by_roles(
+    user_role_pairs = user_service.get_users_by_roles(
         db, roles=[RoleEnum.MEMBER, RoleEnum.ADMIN],
         current_user_context=context, skip=skip, limit=limit
     )
-    return APIResponse(message="Admin users retrieved successfully", data=[User.model_validate(u) for u in users])
+
+    data = [
+        AdminUserResponse(**user.__dict__, role=role)
+        for user, role in user_role_pairs
+    ]
+    return APIResponse(message="Admin users retrieved successfully", data=data)
