@@ -548,8 +548,7 @@ class UserService:
 
         association_result = crud_user.get_association_by_user_and_school(db, user_id=student_id, school_id=school_id)
         role = association_result[0] if association_result else None
-        association = association_result[1] if association_result else None
-        student_level = association.level if association else None
+        student_level = association_result[1].value if association_result and association_result[1] else None
 
         pydantic_user = UserSchema.model_validate(user)
         user_data = pydantic_user.model_dump()
@@ -581,8 +580,7 @@ class UserService:
 
         association_result = crud_user.get_association_by_user_and_school(db, user_id=teacher_id, school_id=school_id)
         role = association_result[0] if association_result else None
-        association = association_result[1] if association_result else None
-        teacher_level = association.level if association else None
+        teacher_level = association_result[1].value if association_result and association_result[1] else None
 
         user_data = UserSchema.model_validate(user).model_dump()
         user_data["num_students_taught"] = total_students_taught

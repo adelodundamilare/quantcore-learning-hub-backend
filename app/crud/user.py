@@ -12,6 +12,8 @@ from app.models.user_school_association import user_school_association
 from app.models.lesson_progress import LessonProgress
 from app.models.exam_attempt import ExamAttempt
 from app.models.course_reward import CourseReward
+from app.models.user_school_association import UserSchoolAssociation
+
 
 from app.schemas.user import UserCreate, UserUpdate
 
@@ -45,13 +47,13 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         ).first()
         return result
 
-    def get_association_by_user_and_school(self, db: Session, *, user_id: int, school_id: int) -> tuple[Role, Any] | None:
-        result = db.query(Role, user_school_association).join(
-            user_school_association, user_school_association.c.role_id == Role.id
+    def get_association_by_user_and_school(self, db: Session, *, user_id: int, school_id: int) -> tuple[Role, CourseLevelEnum] | None:
+        result = db.query(Role, UserSchoolAssociation.level).join(
+            UserSchoolAssociation, UserSchoolAssociation.role_id == Role.id
         ).filter(
-            user_school_association.c.user_id == user_id,
-            user_school_association.c.school_id == school_id,
-            user_school_association.c.deleted_at == None
+            UserSchoolAssociation.user_id == user_id,
+            UserSchoolAssociation.school_id == school_id,
+            UserSchoolAssociation.deleted_at == None
         ).first()
         return result
 
