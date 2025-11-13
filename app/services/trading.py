@@ -323,7 +323,7 @@ class TradingService:
                 detail="Stock not in watchlist"
             )
 
-        crud_watchlist_stock.remove(db, id=stock.id)
+        crud_watchlist_stock.delete(db, id=stock.id)
         db.refresh(watchlist)
 
         stocks_with_sparkline = []

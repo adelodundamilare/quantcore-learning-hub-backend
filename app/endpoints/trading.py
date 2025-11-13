@@ -325,7 +325,7 @@ def create_trading_router():
         db: Session = Depends(deps.get_transactional_db),
         context: UserContext = Depends(deps.get_current_user_with_context)
     ):
-        updated_watchlist = trading_service.remove_stock_from_user_watchlist(
+        updated_watchlist = await trading_service.remove_stock_from_watchlist(
             db,
             user_id=context.user.id,
             watchlist_id=watchlist_id,
