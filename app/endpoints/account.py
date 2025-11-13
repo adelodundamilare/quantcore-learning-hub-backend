@@ -10,7 +10,7 @@ from app.utils.logger import setup_logger
 from app.models.user import User
 from app.services.email import EmailService
 
-from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus, PlatformUserInvite, AdminUserResponse
+from app.schemas.user import User, UserUpdate, UserInvite, BulkInviteRequest, BulkInviteStatus, AdminUserResponse
 from typing import List
 from app.services.user import user_service
 from fastapi.security import HTTPAuthorizationCredentials
@@ -59,42 +59,13 @@ def update_user_me(
 @router.post("/invite", response_model=APIResponse[User])
 def invite_user(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_transactional_db),
     invite_in: UserInvite,
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
-    """Invite a new user (teacher or student) to the current user's school."""
-    if not context.school:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You must have a school context to invite users."
-        )
-
-    inviting_role = context.role.name
-    invited_role = invite_in.role_name
-
-    if inviting_role == RoleEnum.SUPER_ADMIN:
-        pass # Super Admin can invite anyone
-    elif inviting_role == RoleEnum.SCHOOL_ADMIN:
-        if invited_role not in [RoleEnum.TEACHER, RoleEnum.STUDENT]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="School Admins can only invite Teachers or Students."
-            )
-    elif inviting_role == RoleEnum.TEACHER:
-        if invited_role != RoleEnum.STUDENT:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Teachers can only invite Students."
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your role does not have permission to invite users."
-        )
-
+    """Invite a new user (teacher, student, admin, or member) to the current user's school or platform."""
     invited_user = user_service.invite_user(
-        db, current_user_context=context, school=context.school, invite_in=invite_in
+        db, current_user_context=context, invite_in=invite_in
     )
 
     return APIResponse(message="User invited successfully", data=User.model_validate(invited_user))
@@ -220,18 +191,6 @@ def delete_user_by_admin(
 ):
     deleted_user = user_service.delete_user_by_admin(db, user_id=user_id)
     return APIResponse(message="User deleted successfully", data=deleted_user)
-
-@router.post("/admin/invite", response_model=APIResponse[User], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
-def invite_platform_user(
-    *,
-    db: Session = Depends(deps.get_transactional_db),
-    invite_in: PlatformUserInvite
-):
-    """Super admin invites platform-level users (admin or member)."""
-    invited_user = user_service.invite_platform_user(
-        db, invite_in=invite_in
-    )
-    return APIResponse(message="Platform user invited successfully", data=User.model_validate(invited_user))
 
 @router.get("/users/admins", response_model=APIResponse[List[AdminUserResponse]])
 def get_admin_users(

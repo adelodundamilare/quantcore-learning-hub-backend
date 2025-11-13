@@ -75,9 +75,45 @@ class UserService:
         return crud_user.get_non_student_users_by_school(db, school_id=school_id, skip=skip, limit=limit)
 
     def invite_user(
-        self, db: Session, *, school: School, invite_in: UserInvite, current_user_context: UserContext
+        self, db: Session, *, invite_in: UserInvite, current_user_context: UserContext
     ) -> UserSchema:
-        """Invites a user to a school as a teacher or student."""
+        """Invites a user to a school as a teacher/student or as a platform admin/member."""
+        inviting_role = current_user_context.role.name
+        invited_role = invite_in.role_name
+        is_platform_invite = invited_role in [RoleEnum.ADMIN, RoleEnum.MEMBER]
+
+        if inviting_role == RoleEnum.SUPER_ADMIN:
+            pass
+        elif is_platform_invite:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admins can invite platform-level users."
+            )
+        else:
+            if not current_user_context.school:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You must have a school context to invite school users."
+                )
+
+            if inviting_role == RoleEnum.SCHOOL_ADMIN:
+                if invited_role not in [RoleEnum.TEACHER, RoleEnum.STUDENT]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="School Admins can only invite Teachers or Students."
+                    )
+            elif inviting_role == RoleEnum.TEACHER:
+                if invited_role != RoleEnum.STUDENT:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Teachers can only invite Students."
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your role does not have permission to invite users."
+                )
+
         role_to_assign = crud_role.get_by_name(db, name=invite_in.role_name)
         if not role_to_assign:
             raise HTTPException(
@@ -85,48 +121,61 @@ class UserService:
                 detail=f"Role '{invite_in.role_name}' not found. Please seed the database.",
             )
 
+        if is_platform_invite:
+            admin_school = crud_school.get_by_name(db, name=ADMIN_SCHOOL_NAME)
+            if not admin_school:
+                admin_school = crud_school.create(db, obj_in={"name": ADMIN_SCHOOL_NAME}, commit=True)
+            target_school = admin_school
+        else:
+            target_school = current_user_context.school
+
         existing_user = crud_user.get_by_email(db, email=invite_in.email)
 
         user_id_to_check = existing_user.id if existing_user else None
         if user_id_to_check:
             existing_association = crud_user.get_association_by_user_school_role(
-                db, user_id=user_id_to_check, school_id=school.id, role_id=role_to_assign.id
+                db, user_id=user_id_to_check, school_id=target_school.id, role_id=role_to_assign.id
             )
             if existing_association:
+                school_name = "platform" if is_platform_invite else target_school.name
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"User is already associated with {school.name} as a {role_to_assign.name}."
+                    detail=f"User is already associated with {school_name} as a {role_to_assign.name}."
                 )
             else:
+                school_name = "platform" if is_platform_invite else target_school.name
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"User is already associated with {school.name}."
+                    detail=f"User is already associated with {school_name}."
                 )
 
         if existing_user:
             crud_user.add_user_to_school(
-                db, user=existing_user, school=school, role=role_to_assign, level=invite_in.level
+                db, user=existing_user, school=target_school, role=role_to_assign, level=invite_in.level
             )
 
-            if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT:
+            if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT and not is_platform_invite:
                 for course_id in invite_in.course_ids:
                     try:
                         course_service.enroll_student(db, course_id=course_id, user_id=existing_user.id, current_user_context=current_user_context)
                     except HTTPException as e:
                         print(f"Warning: Could not enroll existing user {existing_user.id} in course {course_id}: {e.detail}")
 
+            school_name = "platform" if is_platform_invite else target_school.name
+            role_display = f"platform {role_to_assign.name}" if is_platform_invite else role_to_assign.name
+
             EmailService.send_email(
                 to_email=existing_user.email,
-                subject=f"You've been added to {school.name}!",
-                template_name="added_to_school.html", # Placeholder template
-                template_context={'user_name': existing_user.full_name, 'school_name': school.name, 'role_name': role_to_assign.name}
+                subject=f"You've been added to {school_name}!",
+                template_name="added_to_school.html",
+                template_context={'user_name': existing_user.full_name, 'school_name': school_name, 'role_name': role_display}
             )
             notification_service.create_notification(
                 db,
                 user_id=existing_user.id,
-                message=f"You have been added to {school.name} as a {role_to_assign.name}.",
-                notification_type="school_invitation",
-                link=f"/schools/{school.id}" # Example link
+                message=f"You have been added to {school_name} as a {role_display}.",
+                notification_type="school_invitation" if not is_platform_invite else "platform_invitation",
+                link=f"/schools/{target_school.id}" if not is_platform_invite else "/admin"
             )
             return existing_user
         else:
@@ -143,7 +192,7 @@ class UserService:
             try:
                 new_user = crud_user.create(db, obj_in=user_in, commit=False)
                 crud_user.add_user_to_school(
-                    db, user=new_user, school=school, role=role_to_assign, level=invite_in.level
+                    db, user=new_user, school=target_school, role=role_to_assign, level=invite_in.level
                 )
             except Exception as e:
                 raise HTTPException(
@@ -151,25 +200,28 @@ class UserService:
                     detail=f"An error occurred during the invitation process: {e}",
                 )
 
-            if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT:
+            if invite_in.course_ids and role_to_assign.name == RoleEnum.STUDENT and not is_platform_invite:
                 for course_id in invite_in.course_ids:
                     try:
                         course_service.enroll_student(db, course_id=course_id, user_id=new_user.id, current_user_context=current_user_context)
                     except HTTPException as e:
                         print(f"Warning: Could not enroll new user {new_user.id} in course {course_id}: {e.detail}")
 
+            school_name = "platform" if is_platform_invite else target_school.name
+            role_display = f"platform {role_to_assign.name}" if is_platform_invite else role_to_assign.name
+
             EmailService.send_email(
                 to_email=new_user.email,
                 subject=f"Welcome! Your Invitation Details",
-                template_name="new_account_invite.html", # Placeholder template
-                template_context={'user_name': new_user.full_name, 'email': new_user.email, 'school_name': school.name, 'role_name': role_to_assign.name, 'password': temp_password}
+                template_name="new_account_invite.html",
+                template_context={'user_name': new_user.full_name, 'email': new_user.email, 'school_name': school_name, 'role_name': role_display, 'password': temp_password}
             )
             notification_service.create_notification(
                 db,
                 user_id=new_user.id,
-                message=f"You have been invited to {school.name} as a {role_to_assign.name}.",
-                notification_type="school_invitation",
-                link=f"/schools/{school.id}" # Example link
+                message=f"You have been invited to {school_name} as a {role_display}.",
+                notification_type="school_invitation" if not is_platform_invite else "platform_invitation",
+                link=f"/schools/{target_school.id}" if not is_platform_invite else "/admin"
             )
             return new_user
 
@@ -450,70 +502,6 @@ class UserService:
 
         return updated_user
 
-    def invite_platform_user(self, db: Session, *, invite_in) -> UserSchema:
-        """Invite a platform-level user (admin or member) by super admin."""
-        role_to_assign = crud_role.get_by_name(db, name=invite_in.role_name)
-        if not role_to_assign:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Role '{invite_in.role_name}' not found. Please seed the database.",
-            )
-
-        existing_user = crud_user.get_by_email(db, email=invite_in.email)
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A user with this email already exists.",
-            )
-
-        admin_school = crud_school.get_by_name(db, name=ADMIN_SCHOOL_NAME)
-        if not admin_school:
-            admin_school = crud_school.create(db, obj_in={"name": ADMIN_SCHOOL_NAME}, commit=True)
-
-        temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(12))
-        hashed_password = get_password_hash(temp_password)
-
-        user_in = {
-            "full_name": invite_in.full_name,
-            "email": invite_in.email,
-            "hashed_password": hashed_password,
-            "is_active": True
-        }
-
-        try:
-            new_user = crud_user.create(db, obj_in=user_in, commit=False)
-            crud_user.add_user_to_school(
-                db, user=new_user, school=admin_school, role=role_to_assign
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"An error occurred during the invitation process: {e}",
-            )
-
-        EmailService.send_email(
-            to_email=new_user.email,
-            subject=f"Welcome! Your Platform {role_to_assign.name.title()} Account",
-            template_name="new_account_invite.html",
-            template_context={
-                'user_name': new_user.full_name,
-                'email': new_user.email,
-                'school_name': admin_school.name,
-                'role_name': role_to_assign.name,
-                'password': temp_password
-            }
-        )
-
-        notification_service.create_notification(
-            db,
-            user_id=new_user.id,
-            message=f"You have been invited as a platform {role_to_assign.name}.",
-            notification_type="platform_invitation",
-            link=f"/admin"
-        )
-
-        return new_user
-
     def get_users_by_roles(self, db: Session, roles: List[RoleEnum], current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[tuple[UserSchema, str]]:
         if not permission_helper.is_super_admin(current_user_context):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to access this resource.")
@@ -695,7 +683,7 @@ class UserService:
                     from sqlalchemy import exc
                     try:
                         invited_user = self.invite_user(
-                            db, school=school, invite_in=invite_data,
+                            db, invite_in=invite_data,
                             current_user_context=current_user_context
                         )
                         db.commit()

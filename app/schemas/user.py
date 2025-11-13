@@ -83,7 +83,7 @@ class UserInvite(BaseModel):
         json_schema_extra={
             "properties": {
                 "role_name": {
-                    "enum": ["teacher", "student", "admin", "super_admin"],
+                    "enum": ["teacher", "student", "admin", "member", "school_admin"],
                     "description": "Role to assign to the invited user"
                 }
             },
@@ -97,40 +97,9 @@ class UserInvite(BaseModel):
 
     @field_validator('role_name')
     def validate_role(cls, v):
-        if v not in [RoleEnum.TEACHER, RoleEnum.STUDENT]:
-            raise ValueError("Users can only be invited as a Teacher or a Student.")
+        if v not in [RoleEnum.TEACHER, RoleEnum.STUDENT, RoleEnum.ADMIN, RoleEnum.MEMBER]:
+            raise ValueError("Users can only be invited as a Teacher, Student, Admin, or Member.")
         return v
-
-
-class PlatformUserInvite(BaseModel):
-    """Schema for super admin inviting platform-level users (admin/member)."""
-    email: EmailStr
-    full_name: str
-    role_name: RoleEnum
-
-    model_config = ConfigDict(
-        use_enum_values=True,
-        json_schema_extra={
-            "properties": {
-                "role_name": {
-                    "enum": ["admin", "member"],
-                    "description": "Platform role to assign (admin or member)"
-                }
-            },
-            "example": {
-                "full_name": "Platform Admin",
-                "email": "admin@example.com",
-                "role_name": "admin"
-            }
-        }
-    )
-
-    @field_validator('role_name')
-    def validate_platform_role(cls, v):
-        if v not in [RoleEnum.ADMIN, RoleEnum.MEMBER]:
-            raise ValueError("Platform users can only be invited as Admin or Member.")
-        return v
-
 
 class AdminSchoolInvite(BaseModel):
     """Schema for inviting a new user to a school."""
