@@ -141,7 +141,7 @@ class RewardRatingService:
                     detail="You can only delete your own ratings."
                 )
 
-        deleted_rating = crud_rating.remove(db, id=rating_id)
+        deleted_rating = crud_rating.delete(db, id=rating_id)
         return deleted_rating
 
     def get_course_ratings(self, db: Session, course_id: int, current_user_context: UserContext,

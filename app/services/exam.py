@@ -144,7 +144,7 @@ class ExamService:
 
         self._require_exam_management_permission(db, current_user_context, exam=exam)
 
-        deleted_exam = crud_exam.remove(db, id=exam_id)
+        deleted_exam = crud_exam.delete(db, id=exam_id)
         return deleted_exam
 
     def get_all_exams(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100, level: Optional[CourseLevelEnum] = None) -> List[Exam]:
@@ -173,7 +173,7 @@ class ExamService:
             completed_exam_ids = crud_exam_attempt.get_user_completed_exam_ids(db, user_id=user_id)
             in_progress_exam_ids = crud_exam_attempt.get_user_in_progress_exam_ids(db, user_id=user_id)
             highest_scores = crud_exam_attempt.get_user_highest_scores(db, user_id=user_id)
-            
+
             for exam in exams:
                 if exam.id in completed_exam_ids:
                     exam.status = StudentExamStatusEnum.COMPLETED
@@ -182,7 +182,7 @@ class ExamService:
                     exam.status = StudentExamStatusEnum.IN_PROGRESS
                 else:
                     exam.status = StudentExamStatusEnum.LOCKED
-        
+
         return exams
 
     def create_question(self, db: Session, question_in: QuestionCreate, current_user_context: UserContext) -> Question:
@@ -254,7 +254,7 @@ class ExamService:
 
         self._require_exam_management_permission(db, current_user_context, exam=exam)
 
-        deleted_question = crud_question.remove(db, id=question_id)
+        deleted_question = crud_question.delete(db, id=question_id)
         return deleted_question
 
     def get_exam_questions(self, db: Session, exam_id: int, current_user_context: UserContext,

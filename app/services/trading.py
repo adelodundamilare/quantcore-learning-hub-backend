@@ -230,7 +230,7 @@ class TradingService:
                 detail="Watchlist not found"
             )
 
-        crud_user_watchlist.remove(db, id=watchlist_id)
+        crud_user_watchlist.delete(db, id=watchlist_id)
         return {"message": "Watchlist deleted successfully"}
 
     async def add_stock_to_watchlist(

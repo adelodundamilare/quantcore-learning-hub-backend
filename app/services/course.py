@@ -70,7 +70,7 @@ class CourseService:
 
         permission_helper.require_course_management_permission(current_user_context, course)
 
-        deleted_course = crud_course.remove(db, id=course_id)
+        deleted_course = crud_course.delete(db, id=course_id)
         return CourseSchema.model_validate(deleted_course)
 
     def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
@@ -181,7 +181,7 @@ class CourseService:
 
         enrollment = crud_enrollment.get_by_user_and_course(db, user_id=user_id, course_id=course_id)
         if enrollment:
-            crud_enrollment.remove(db, id=enrollment.id)
+            crud_enrollment.delete(db, id=enrollment.id)
 
         notification_service.create_notification(
             db,
