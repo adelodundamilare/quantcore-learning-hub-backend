@@ -59,6 +59,11 @@ class LogoService:
             'MSTR': 'microstrategy.com',
             'RIOT': 'riotblockchain.com',
             'MARA': 'marathon-digital.com',
+            'ETHA': 'blackrock.com',
+            'IBIT': 'blackrock.com',
+            'SPY': 'ssga.com',
+            'QQQ': 'invesco.com',
+            'IWM': 'blackrock.com'
         }
 
     async def _url_exists(self, url: str) -> bool:
