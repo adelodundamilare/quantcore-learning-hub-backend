@@ -123,7 +123,7 @@ class PolygonService:
             return [result["close"] for result in historical_data["results"]]
         return None
 
-    async def get_all_stocks(self, search: Optional[str] = None, active: Optional[bool] = True, limit: int = 100, offset: int = 0) -> List[dict]:
+    async def get_all_stocks(self, search: Optional[str] = None, active: Optional[bool] = True, limit: int = 100, offset: int = 0, types: Optional[List[str]] = None) -> List[dict]:
         path = f"/v3/reference/tickers"
         params = {
             "market": "stocks",
@@ -133,7 +133,12 @@ class PolygonService:
         }
         if search:
             params["search"] = search
-            params["type"] = "CS"
+            if types is None:
+                types = ["CS", "ETF"]
+            if len(types) == 1:
+                params["type"] = types[0]
+            elif len(types) > 1:
+                params["types"] = ",".join(types)
 
         data = await self._make_request(path, params=params, allow_404=True)
         if not data:

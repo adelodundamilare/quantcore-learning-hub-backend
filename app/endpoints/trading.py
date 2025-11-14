@@ -50,13 +50,15 @@ def create_trading_router():
         search: Optional[str] = None,
         active: Optional[bool] = True,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        types: Optional[str] = None
     ):
         if search:
+            asset_types = types.split(",") if types else None
             stocks = await polygon_service.get_all_stocks(
-                search=search, active=active, limit=limit, offset=offset
+                search=search, active=active, limit=limit, offset=offset, types=asset_types
             )
-            message = f"Found {len(stocks)} stocks matching '{search}'"
+            message = f"Found {len(stocks)} securities matching '{search}'"
         else:
             stocks_data = await popular_stocks_cache.get_popular_stocks(limit=limit)
 
