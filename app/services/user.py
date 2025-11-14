@@ -633,6 +633,11 @@ class UserService:
         try:
             df = self.parse_invite_file(file_content, filename)
 
+            if current_user_context.role.name == RoleEnum.TEACHER:
+                teacher_rows = df[df['role'].str.lower() == 'teacher']
+                if not teacher_rows.empty:
+                    raise ValueError("Teachers can only bulk invite students, not other teachers.")
+
             task_id = str(uuid.uuid4())
             task_status = BulkInviteStatus(
                 task_id=task_id,
@@ -647,7 +652,6 @@ class UserService:
 
             self._bulk_invite_tasks[task_id] = task_status
 
-            # For now, we'll process synchronously. In production, use background tasks
             self._process_bulk_invites(db, df, bulk_invite_request, school, current_user_context, task_id)
 
             return task_id
@@ -665,6 +669,9 @@ class UserService:
         """Process bulk invites and update task status."""
         task_status = self._bulk_invite_tasks[task_id]
         results = []
+
+        original_school = current_user_context.school
+        current_user_context.school = school
 
         try:
             for index, row in df.iterrows():
@@ -759,6 +766,8 @@ class UserService:
             task_status.status = "failed"
             task_status.error_message = str(e)
             task_status.completed_at = datetime.now()
+        finally:
+            current_user_context.school = original_school
 
     def get_bulk_invite_status(self, task_id: str) -> BulkInviteStatus:
         """Get the status of a bulk invite task."""

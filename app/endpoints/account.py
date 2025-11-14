@@ -77,10 +77,10 @@ async def bulk_invite_users(
     db: Session = Depends(deps.get_db),
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
-    if not context.school:
+    if not context.school or context.role.name == RoleEnum.SUPER_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You must have a school context to invite users."
+            detail="Bulk invites are only available for school administrators and teachers."
         )
 
     if not (file.filename.lower().endswith(('.csv', '.xlsx', '.xls'))):
