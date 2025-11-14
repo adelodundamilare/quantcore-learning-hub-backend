@@ -36,7 +36,8 @@ POPULAR_STOCKS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "NFLX",
     "AMD", "INTC", "CRM", "ORCL", "CSCO", "ADBE", "PYPL", "UBER",
     "SPOT", "ZOOM", "SHOP", "SQ", "COIN", "ROKU", "PINS", "SNAP",
-    "TTD", "OKTA", "ZS", "CRWD", "DDOG", "NOW", "DOCU", "PLTR"
+    "TTD", "OKTA", "ZS", "CRWD", "DDOG", "NOW", "DOCU", "PLTR","ETHA",
+            "IBIT","SPY","QQQ","IWM"
 ]
 
 def create_trading_router():
