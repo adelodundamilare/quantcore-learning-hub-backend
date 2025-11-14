@@ -13,7 +13,7 @@ from app.crud.user import user as crud_user
 class PermissionHelper:
     @staticmethod
     def is_super_admin(context: UserContext) -> bool:
-        return context.role.name == RoleEnum.SUPER_ADMIN # or admin or member
+        return context.role.name == RoleEnum.SUPER_ADMIN or context.role.name == RoleEnum.ADMIN or context.role.name == RoleEnum.MEMBER
 
     @staticmethod
     def is_school_admin(context: UserContext) -> bool:

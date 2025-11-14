@@ -8,6 +8,7 @@ from app.schemas.user import AdminSchoolInvite, TeacherProfile, TeacherUpdate, U
 from app.crud.school import school as crud_school
 from app.services.user import user_service
 from app.utils import deps
+from app.utils.permission import permission_helper
 from app.crud.base import PaginatedResponse
 from app.core.constants import RoleEnum
 
@@ -21,6 +22,11 @@ def create_school(
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
     """Create a new school and its initial administrator by an existing admin."""
+    if not permission_helper.is_super_admin(context):
+        raise HTTPException(
+            status_code=403,
+            detail="Only Admins can create schools."
+        )
 
     new_school = user_service.admin_invite_user(
         db, invite_in=invite_in
