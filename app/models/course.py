@@ -35,10 +35,10 @@ class Course(Base):
     school = relationship("School", back_populates="courses")
     teachers = relationship("User", secondary=course_teachers_association, back_populates="teaching_courses")
     students = relationship("User", secondary=course_students_association, back_populates="enrolled_courses")
-    curriculums = relationship("Curriculum", back_populates="course", cascade="all, delete-orphan")
-    exams = relationship("Exam", back_populates="course", cascade="all, delete-orphan")
-    enrollments = relationship("CourseEnrollment", back_populates="course")
-    ratings = relationship("CourseRating", back_populates="course")
+    curriculums = relationship("Curriculum", primaryjoin="and_(Course.id == Curriculum.course_id, Curriculum.deleted_at == None)", back_populates="course", cascade="all, delete-orphan")
+    exams = relationship("Exam", primaryjoin="and_(Course.id == Exam.course_id, Exam.deleted_at == None)", back_populates="course", cascade="all, delete-orphan")
+    enrollments = relationship("CourseEnrollment", primaryjoin="and_(Course.id == CourseEnrollment.course_id, CourseEnrollment.deleted_at == None)", back_populates="course")
+    ratings = relationship("CourseRating", primaryjoin="and_(Course.id == CourseRating.course_id, CourseRating.deleted_at == None)", back_populates="course")
 
     @property
     def average_rating(self):
@@ -55,4 +55,3 @@ class Course(Base):
     @property
     def total_enrolled_students(self):
         return len(self.students)
-

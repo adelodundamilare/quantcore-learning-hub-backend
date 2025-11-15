@@ -19,5 +19,4 @@ class Lesson(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     curriculum = relationship("Curriculum", back_populates="lessons")
-    progress_records = relationship("LessonProgress", back_populates="lesson")
-
+    progress_records = relationship("LessonProgress", primaryjoin="and_(Lesson.id == LessonProgress.lesson_id, LessonProgress.deleted_at == None)", back_populates="lesson")

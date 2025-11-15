@@ -16,5 +16,5 @@ class Curriculum(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     course = relationship("Course", back_populates="curriculums")
-    lessons = relationship("Lesson", back_populates="curriculum", cascade="all, delete-orphan")
-    exams = relationship("Exam", back_populates="curriculum", cascade="all, delete-orphan")
+    lessons = relationship("Lesson", primaryjoin="and_(Curriculum.id == Lesson.curriculum_id, Lesson.deleted_at == None)", back_populates="curriculum", cascade="all, delete-orphan")
+    exams = relationship("Exam", primaryjoin="and_(Curriculum.id == Exam.curriculum_id, Exam.deleted_at == None)", back_populates="curriculum", cascade="all, delete-orphan")

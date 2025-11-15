@@ -11,12 +11,12 @@ class School(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     # Add other school-specific fields here
 
-    user_associations = relationship("UserSchoolAssociation", back_populates="school")
+    user_associations = relationship("UserSchoolAssociation", primaryjoin="and_(School.id == UserSchoolAssociation.school_id, UserSchoolAssociation.deleted_at == None)", back_populates="school")
     users = relationship(
         "User",
         secondary="user_school_association",
         back_populates="schools",
-        primaryjoin="School.id == UserSchoolAssociation.school_id",
+        primaryjoin="and_(School.id == UserSchoolAssociation.school_id, UserSchoolAssociation.deleted_at == None)",
         secondaryjoin="User.id == UserSchoolAssociation.user_id",
         viewonly=True
     )

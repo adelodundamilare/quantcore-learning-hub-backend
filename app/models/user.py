@@ -22,12 +22,12 @@ class User(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Many-to-many relationship with School via the association model
-    school_associations = relationship("UserSchoolAssociation", back_populates="user")
+    school_associations = relationship("UserSchoolAssociation", primaryjoin="and_(User.id == UserSchoolAssociation.user_id, UserSchoolAssociation.deleted_at == None)", back_populates="user")
     schools = relationship(
         "School",
         secondary="user_school_association",
         back_populates="users",
-        primaryjoin="User.id == UserSchoolAssociation.user_id",
+        primaryjoin="and_(User.id == UserSchoolAssociation.user_id, UserSchoolAssociation.deleted_at == None)",
         secondaryjoin="School.id == UserSchoolAssociation.school_id",
         viewonly=True
     )
@@ -35,8 +35,8 @@ class User(Base):
     enrolled_courses = relationship("Course", secondary=course_students_association, back_populates="students")
     exam_attempts = relationship("ExamAttempt", back_populates="user", cascade="all, delete-orphan")
     user_answers = relationship("UserAnswer", back_populates="user", cascade="all, delete-orphan")
-    course_enrollments = relationship("CourseEnrollment", back_populates="user")
-    course_ratings = relationship("CourseRating", back_populates="user")
+    course_enrollments = relationship("CourseEnrollment", primaryjoin="and_(User.id == CourseEnrollment.user_id, CourseEnrollment.deleted_at == None)", back_populates="user")
+    course_ratings = relationship("CourseRating", primaryjoin="and_(User.id == CourseRating.user_id, CourseRating.deleted_at == None)", back_populates="user")
     user_watchlists = relationship("UserWatchlist", back_populates="user", cascade="all, delete-orphan")
     account_balance = relationship("AccountBalance", back_populates="user", uselist=False, cascade="all, delete-orphan")
     portfolio_positions = relationship("PortfolioPosition", back_populates="user", cascade="all, delete-orphan")
