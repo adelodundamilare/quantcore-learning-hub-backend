@@ -1,16 +1,11 @@
 import os
-import smtplib
-import ssl
 import logging
 from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from jinja2 import Environment, FileSystemLoader, select_autoescape, Template, TemplateNotFound
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, To
 
 from app.core.config import settings
-
-template_folder = "app/templates"
-templates = Environment(loader=FileSystemLoader(template_folder))
 
 class EmailService:
     _template_env = None
@@ -18,10 +13,10 @@ class EmailService:
     @classmethod
     def _get_template_env(cls):
         """
-        Initialize Jinja2 template environment if not already initialized
+        Initialize Jinja2 template environment with inheritance support
         """
         if cls._template_env is None:
-            # Dynamically find the templates directory
+            # Find templates directory
             template_dir = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 '..',
@@ -30,7 +25,8 @@ class EmailService:
 
             cls._template_env = Environment(
                 loader=FileSystemLoader(template_dir),
-                autoescape=select_autoescape(['html'])
+                autoescape=select_autoescape(['html']),
+                enable_async=False
             )
         return cls._template_env
 
@@ -68,7 +64,7 @@ class EmailService:
         template_context: dict,
     ):
         """
-        Send an email using a specified template.
+        Send an email using SendGrid.
 
         :param to_email: Recipient email address
         :param subject: Email subject
@@ -76,37 +72,27 @@ class EmailService:
         :param template_context: Dictionary of template variables
         """
         try:
-            # Create message container
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = settings.EMAILS_FROM_NAME
-            msg['To'] = to_email
+            # Render HTML content with template inheritance support
+            html_content = cls.render_template(template_name, template_context)
 
-            # Render HTML content
-            try:
-                template = templates.get_template(template_name)
-                html_content = template.render(template_context)
-            except TemplateNotFound:
-                logging.error(f"Template '{template_name}' not found.")
-                raise ValueError(f"Template '{template_name}' does not exist.")
+            # Create SendGrid message
+            message = Mail(
+                from_email=settings.EMAILS_FROM_EMAIL,
+                to_emails=To(to_email),
+                subject=subject,
+                html_content=html_content
+            )
 
-            # Attach HTML content
-            msg.attach(MIMEText(html_content, 'html'))
+            # Send email via SendGrid
+            sendgrid_client = SendGridAPIClient(settings.SENDGRID_API_KEY)
+            response = sendgrid_client.send(message)
 
-            # Create secure SSL context
-            context = ssl.create_default_context()
+            if response.status_code not in [200, 201, 202]:
+                logging.error(f"SendGrid error: {response.status_code} - {response.body}")
+                raise Exception(f"SendGrid API error: {response.status_code}")
 
-            # Send email
-            with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
-                server.starttls(context=context)
-                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-                server.sendmail(msg['From'], [to_email], msg.as_string())
+            logging.info(f"Email sent successfully to {to_email} via SendGrid")
 
-            logging.info(f"Email sent successfully to {to_email}")
-
-        except smtplib.SMTPException as smtp_error:
-            logging.error(f"SMTP error: {smtp_error}")
-            raise
         except Exception as e:
-            logging.error(f"Unexpected error: {e}")
+            logging.error(f"SendGrid email error: {e}")
             raise

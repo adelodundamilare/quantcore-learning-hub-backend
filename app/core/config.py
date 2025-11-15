@@ -38,10 +38,7 @@ class Settings(BaseSettings):
         )
 
     # Email
-    SMTP_SERVER: str
-    SMTP_PORT: int
-    SMTP_USERNAME: str
-    SMTP_PASSWORD: str
+    SENDGRID_API_KEY: str
     EMAILS_FROM_EMAIL: str
     EMAILS_FROM_NAME: str
 
