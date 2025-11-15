@@ -75,9 +75,15 @@ class EmailService:
             # Render HTML content with template inheritance support
             html_content = cls.render_template(template_name, template_context)
 
+            from_email = (
+                f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
+                if hasattr(settings, 'EMAILS_FROM_NAME')
+                else settings.EMAILS_FROM_EMAIL
+            )
+
             # Create SendGrid message
             message = Mail(
-                from_email=settings.EMAILS_FROM_EMAIL,
+                from_email=from_email,
                 to_emails=To(to_email),
                 subject=subject,
                 html_content=html_content
