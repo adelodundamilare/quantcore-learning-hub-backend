@@ -7,6 +7,6 @@ from app.schemas.question import QuestionCreate, QuestionUpdate
 
 class CRUDQuestion(CRUDBase[Question, QuestionCreate, QuestionUpdate]):
     def get_by_exam(self, db: Session, *, exam_id: int) -> List[Question]:
-        return db.query(self.model).filter(self.model.exam_id == exam_id).all()
+        return db.query(self.model).filter(self.model.exam_id == exam_id, self.model.deleted_at == None).all()
 
 question = CRUDQuestion(Question)
