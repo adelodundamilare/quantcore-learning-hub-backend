@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from datetime import datetime
 
+from app.core.database import SessionLocal
 from app.crud.exam import exam as crud_exam
 from app.crud.question import question as crud_question
 from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
@@ -14,8 +15,11 @@ from app.schemas.exam_attempt import ExamAttemptCreate, ExamAttemptDetails, Exam
 from app.schemas.question import QuestionWithUserAnswer
 from app.schemas.user_answer import UserAnswerCreate, UserAnswerUpdate, UserAnswer
 from app.schemas.user import UserContext
-from app.core.constants import ExamAttemptStatusEnum
+from app.core.constants import EnrollmentStatusEnum, ExamAttemptStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
+from app.utils.events import event_bus
+from app.crud.course_enrollment import course_enrollment as enrollment_crud
+from app.services.reward_rating import reward_rating_service
 
 
 class ExamAttemptService:
@@ -242,7 +246,7 @@ class ExamAttemptService:
 
         return processed_answers
 
-    def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:
+    async def submit_exam(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:
         attempt = crud_exam_attempt.get(db, id=attempt_id)
         if not attempt:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam attempt not found.")
@@ -272,7 +276,16 @@ class ExamAttemptService:
             user_answer = user_answers_map.get(question.id)
             questions_with_answers.append(QuestionWithUserAnswer(user_answer=user_answer, **question.__dict__))
 
-        return ExamAttemptDetails(exam=exam, questions=questions_with_answers)
+        result = ExamAttemptDetails(exam=exam, questions=questions_with_answers)
+
+        if passed and exam.course_id:
+            await event_bus.publish("course_completed", {
+                "student_id": current_user_context.user.id,
+                "course_id": exam.course_id,
+                "school_id": exam.course.school_id if exam.course else None
+            })
+
+        return result
 
     def get_exam_attempt(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:
         attempt = crud_exam_attempt.get(db, id=attempt_id)
@@ -341,6 +354,33 @@ class ExamAttemptService:
             )
 
         return crud_exam_attempt.get_all_by_exam(db, exam_id=exam_id)
+
+    async def _process_course_completion_async(self, course_id: int, user_id: int):
+
+        db = SessionLocal()
+        try:
+            enrollment = enrollment_crud.get_by_user_and_course(db, user_id=user_id, course_id=course_id)
+            if not enrollment or enrollment.status == EnrollmentStatusEnum.COMPLETED:
+                return
+
+            enrollment_crud.update_status(db, enrollment.id, EnrollmentStatusEnum.COMPLETED)
+
+            mock_admin_context = UserContext(
+                user_id=1,
+                user=None,
+                school_id=enrollment.course.school_id,
+                role_name="school_admin"
+            )
+
+            try:
+                await reward_rating_service.award_completion_reward(
+                    db, enrollment_id=enrollment.id, current_user_context=mock_admin_context
+                )
+            except Exception:
+                pass
+
+        finally:
+            db.close()
 
 
 exam_attempt_service = ExamAttemptService()

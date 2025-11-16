@@ -26,12 +26,37 @@ class CRUDTradingLeaderboardSnapshot(CRUDBase[TradingLeaderboardSnapshot, Tradin
         db.query(self.model).filter(self.model.school_id == school_id, self.model.timestamp < threshold).delete()
         db.commit()
 
+    def delete_all_snapshots_for_school(self, db: Session, school_id: int):
+        db.query(self.model).filter(self.model.school_id == school_id).delete()
+        db.commit()
+
     def count_snapshots_for_school(self, db: Session, school_id: int) -> int:
         return db.query(self.model).filter(self.model.school_id == school_id).count()
 
     def bulk_create_trading_leaderboard_snapshots(self, db: Session, snapshots_data: List[dict]):
         db.bulk_insert_mappings(self.model, snapshots_data)
         db.commit()
+
+    def get_snapshot_for_student_and_school(self, db: Session, student_id: int, school_id: int) -> Optional[TradingLeaderboardSnapshot]:
+        return db.query(self.model).filter(
+            self.model.student_id == student_id,
+            self.model.school_id == school_id
+        ).first()
+
+    def update_or_create_snapshot(self, db: Session, student_id: int, school_id: int, data: dict):
+        existing_snapshot = self.get_snapshot_for_student_and_school(db, student_id, school_id)
+        if existing_snapshot:
+            for field, value in data.items():
+                if hasattr(existing_snapshot, field):
+                    setattr(existing_snapshot, field, value)
+            db.add(existing_snapshot)
+            db.commit()
+            return existing_snapshot
+        else:
+            new_snapshot = self.model(**data)
+            db.add(new_snapshot)
+            db.commit()
+            return new_snapshot
 
 trading_leaderboard_snapshot = CRUDTradingLeaderboardSnapshot(TradingLeaderboardSnapshot)
 
@@ -55,11 +80,36 @@ class CRUDLeaderboardSnapshot(CRUDBase[LeaderboardSnapshot, LeaderboardEntrySche
         db.query(self.model).filter(self.model.school_id == school_id, self.model.timestamp < threshold).delete()
         db.commit()
 
+    def delete_all_snapshots_for_school(self, db: Session, school_id: int):
+        db.query(self.model).filter(self.model.school_id == school_id).delete()
+        db.commit()
+
     def count_snapshots_for_school(self, db: Session, school_id: int) -> int:
         return db.query(self.model).filter(self.model.school_id == school_id).count()
 
     def bulk_create_leaderboard_snapshots(self, db: Session, snapshots_data: List[dict]):
         db.bulk_insert_mappings(self.model, snapshots_data)
         db.commit()
+
+    def get_snapshot_for_student_and_school(self, db: Session, student_id: int, school_id: int) -> Optional[LeaderboardSnapshot]:
+        return db.query(self.model).filter(
+            self.model.student_id == student_id,
+            self.model.school_id == school_id
+        ).first()
+
+    def update_or_create_snapshot(self, db: Session, student_id: int, school_id: int, data: dict):
+        existing_snapshot = self.get_snapshot_for_student_and_school(db, student_id, school_id)
+        if existing_snapshot:
+            for field, value in data.items():
+                if hasattr(existing_snapshot, field):
+                    setattr(existing_snapshot, field, value)
+            db.add(existing_snapshot)
+            db.commit()
+            return existing_snapshot
+        else:
+            new_snapshot = self.model(**data)
+            db.add(new_snapshot)
+            db.commit()
+            return new_snapshot
 
 leaderboard_snapshot = CRUDLeaderboardSnapshot(LeaderboardSnapshot)

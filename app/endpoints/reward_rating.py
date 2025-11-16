@@ -15,13 +15,13 @@ router = APIRouter()
 
 
 @router.post("/enrollments/{enrollment_id}/reward", response_model=APIResponse[CourseReward], status_code=status.HTTP_201_CREATED)
-def award_completion_reward(
+async def award_completion_reward(
     *,
     db: Session = Depends(deps.get_transactional_db),
     enrollment_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    reward = reward_rating_service.award_completion_reward(
+    reward = await reward_rating_service.award_completion_reward(
         db, enrollment_id=enrollment_id, current_user_context=context
     )
     return APIResponse(message="Reward awarded successfully", data=CourseReward.model_validate(reward))

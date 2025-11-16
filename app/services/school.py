@@ -21,7 +21,7 @@ import random
 
 class SchoolService:
 
-    def create_school_and_admin(
+    async def create_school_and_admin(
         self, db: Session, *, school_in: SchoolCreate, admin_in: UserCreate
     ) -> School:
         if crud_user.get_by_email(db, email=admin_in.email):
@@ -75,7 +75,7 @@ class SchoolService:
                 detail=f"An error occurred during the signup process: {e}",
             )
 
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=new_admin.email,
             subject=f"Welcome! Verify Your Account",
             template_name="verify_account.html",

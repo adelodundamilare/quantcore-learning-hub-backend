@@ -11,11 +11,14 @@ from app.schemas.user import UserContext
 from app.schemas.reward_rating import ( CourseRewardCreate, CourseRatingCreate, CourseRatingUpdate, CourseRatingStats)
 from app.models.course_enrollment import EnrollmentStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
+from app.utils.cache import get, set, delete
+from app.utils.events import event_bus
+import asyncio
 
 
 class RewardRatingService:
 
-    def award_completion_reward(self, db: Session, enrollment_id: int, current_user_context: UserContext):
+    async def award_completion_reward(self, db: Session, enrollment_id: int, current_user_context: UserContext):
         enrollment = crud_enrollment.get(db, id=enrollment_id)
         if not enrollment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found.")
@@ -44,6 +47,16 @@ class RewardRatingService:
 
         reward = crud_reward.create(db, obj_in=reward_in)
         db.flush()
+
+        delete(f"user_points_{enrollment.user_id}")
+
+        await event_bus.publish("reward_awarded", {
+            "student_id": enrollment.user_id,
+            "course_id": enrollment.course_id,
+            "school_id": enrollment.course.school_id,
+            "reward_id": reward.id
+        })
+
         return reward
 
     def get_user_rewards(self, db: Session, user_id: int, current_user_context: UserContext):
@@ -65,8 +78,16 @@ class RewardRatingService:
                     detail="You can only view your own points."
                 )
 
+        cache_key = f"user_points_{user_id}"
+        cached = get(cache_key)
+        if cached:
+            return cached
+
         total_points = crud_reward.get_total_points_by_user(db, user_id=user_id)
-        return {"user_id": user_id, "total_points": total_points}
+        result = {"user_id": user_id, "total_points": total_points}
+
+        set(cache_key, result, 300)
+        return result
 
     def create_rating(self, db: Session, rating_in: CourseRatingCreate, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):

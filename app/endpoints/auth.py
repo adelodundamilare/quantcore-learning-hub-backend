@@ -26,13 +26,13 @@ class SchoolSignupRequest(BaseModel):
     admin: UserCreate
 
 @router.post("/signup-school", response_model=APIResponse[School])
-def school_signup(
+async def school_signup(
     *,
     db: Session = Depends(deps.get_db),
     signup_request: SchoolSignupRequest
 ):
     """Handles the creation of a new school and its administrator."""
-    new_school = school_service.create_school_and_admin(
+    new_school = await school_service.create_school_and_admin(
         db=db,
         school_in=signup_request.school,
         admin_in=signup_request.admin
@@ -86,13 +86,13 @@ def logout(
     return APIResponse(message="Logout successful")
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
-def forgot_password(
+async def forgot_password(
     *,
     db: Session = Depends(deps.get_transactional_db),
     request: ForgotPasswordRequest
 ):
     """Request a password reset link to be sent to the user's email."""
-    auth_service.request_password_reset(db=db, email=request.email, frontend_base_url=request.frontend_base_url)
+    await auth_service.request_password_reset(db=db, email=request.email, frontend_base_url=request.frontend_base_url)
     return APIResponse(message="Password reset link sent if email exists")
 @router.post("/reset-password", status_code=status.HTTP_200_OK, response_model=APIResponse[None])
 def reset_password(
@@ -115,11 +115,11 @@ def verify_account(
     return APIResponse(message="Account verified successfully")
 
 @router.post("/resend-verification", response_model=APIResponse[None])
-def resend_verification_code(
+async def resend_verification_code(
     *,
     db: Session = Depends(deps.get_db),
     request: ResendVerificationRequest
 ):
     """Resend account verification code to the user's email."""
-    auth_service.resend_verification_code(db=db, email=request.email)
+    await auth_service.resend_verification_code(db=db, email=request.email)
     return APIResponse(message="Verification code resent if account is not verified")

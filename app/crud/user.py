@@ -25,7 +25,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         return query.first()
 
     def get_by_email(self, db: Session, *, email: str) -> User | None:
-        return db.query(User).filter(User.email == email).first()
+        return db.query(User).filter(User.email == email, User.deleted_at == None).first()
 
     def get_user_contexts(self, db: Session, *, user_id: int) -> List[dict]:
         results = (
@@ -127,7 +127,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)\
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id == role_id
+                user_school_association.c.role_id == role_id,
+                User.deleted_at == None
             )
         if start_date:
             query = query.filter(User.created_at >= start_date)
@@ -138,7 +139,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
     def get_users_by_school_count(self, db: Session, *, school_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> int:
         query = db.query(User)\
             .join(user_school_association, User.id == user_school_association.c.user_id)\
-            .filter(user_school_association.c.school_id == school_id)
+            .filter(user_school_association.c.school_id == school_id, User.deleted_at == None)
         if start_date:
             query = query.filter(User.created_at >= start_date)
         if end_date:
@@ -154,7 +155,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)\
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id != student_role.id
+                user_school_association.c.role_id != student_role.id,
+                User.deleted_at == None
             )
 
         if start_date:
@@ -223,7 +225,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id == student_role.id
+                user_school_association.c.role_id == student_role.id,
+                User.deleted_at == None
             )
             .outerjoin(lessons_completed_sq, User.id == lessons_completed_sq.c.user_id)
             .outerjoin(accumulated_exam_score_sq, User.id == accumulated_exam_score_sq.c.user_id)
@@ -250,7 +253,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id == student_role.id
+                user_school_association.c.role_id == student_role.id,
+                User.deleted_at == None
             )
             .join(ExamAttempt, User.id == ExamAttempt.user_id)
             .filter(ExamAttempt.status == "completed")
@@ -279,7 +283,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             .join(user_school_association, User.id == user_school_association.c.user_id)
             .filter(
                 user_school_association.c.school_id == school_id,
-                user_school_association.c.role_id == student_role.id
+                user_school_association.c.role_id == student_role.id,
+                User.deleted_at == None
             )
             .join(CourseEnrollment, User.id == CourseEnrollment.user_id)
             .join(LessonProgress, CourseEnrollment.id == LessonProgress.enrollment_id)
@@ -301,7 +306,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
 
         query = db.query(User)\
             .join(user_school_association, User.id == user_school_association.c.user_id)\
-            .filter(user_school_association.c.role_id == student_role.id)
+            .filter(user_school_association.c.role_id == student_role.id, User.deleted_at == None)
         if start_date:
             query = query.filter(User.created_at >= start_date)
         if end_date:
@@ -315,7 +320,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
 
         query = db.query(User)\
             .join(user_school_association, User.id == user_school_association.c.user_id)\
-            .filter(user_school_association.c.role_id == teacher_role.id)
+            .filter(user_school_association.c.role_id == teacher_role.id, User.deleted_at == None)
         if start_date:
             query = query.filter(User.created_at >= start_date)
         if end_date:
@@ -360,5 +365,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         db.commit()
         db.refresh(user)
         return user
+
+    def get_student_school_associations(self, db: Session, student_id: int) -> List[Any]:
+        """Get all school associations for a student."""
+        from app.models.user import user_school_association
+        student_role = db.query(Role).filter(Role.name == "student").first()
+        if not student_role:
+            return []
+
+        return db.query(user_school_association).filter(
+            user_school_association.c.user_id == student_id,
+            user_school_association.c.role_id == student_role.id
+        ).all()
 
 user = CRUDUser(User)

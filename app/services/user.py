@@ -7,7 +7,7 @@ import uuid
 import pandas as pd
 from datetime import datetime
 import io
-
+from sqlalchemy import exc
 from app.core.constants import ADMIN_SCHOOL_NAME
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
@@ -35,14 +35,14 @@ logger = setup_logger("user_service", "user_service.log")
 
 class UserService:
 
-    def change_password(self, db: Session, user: User, old_password: str, new_password: str):
+    async def change_password(self, db: Session, user: User, old_password: str, new_password: str):
         if not verify_password(old_password, user.hashed_password):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password.")
 
         hashed_password = get_password_hash(new_password)
         updated_user = crud_user.update_user_password(db, user=user, hashed_password=hashed_password)
 
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=user.email,
             subject="Your Password Has Been Changed",
             template_name="reset-password-success.html",
@@ -74,7 +74,7 @@ class UserService:
 
         return crud_user.get_non_student_users_by_school(db, school_id=school_id, skip=skip, limit=limit)
 
-    def invite_user(
+    async def invite_user(
         self, db: Session, *, invite_in: UserInvite, current_user_context: UserContext
     ) -> UserSchema:
         """Invites a user to a school as a teacher/student or as a platform admin/member."""
@@ -164,7 +164,7 @@ class UserService:
             school_name = "platform" if is_platform_invite else target_school.name
             role_display = f"platform {role_to_assign.name}" if is_platform_invite else role_to_assign.name
 
-            EmailService.send_email(
+            await EmailService.send_email(
                 to_email=existing_user.email,
                 subject=f"You've been added to {school_name}!",
                 template_name="added_to_school.html",
@@ -210,7 +210,7 @@ class UserService:
             school_name = "platform" if is_platform_invite else target_school.name
             role_display = f"platform {role_to_assign.name}" if is_platform_invite else role_to_assign.name
 
-            EmailService.send_email(
+            await EmailService.send_email(
                 to_email=new_user.email,
                 subject=f"Welcome! Your Invitation Details",
                 template_name="new_account_invite.html",
@@ -225,7 +225,7 @@ class UserService:
             )
             return new_user
 
-    def admin_invite_user(
+    async def admin_invite_user(
         self, db: Session, *, invite_in: UserInvite
     ) -> UserSchema:
         """Admin invites a user to a school as a school admin."""
@@ -266,7 +266,7 @@ class UserService:
                 detail=f"An error occurred during the invitation process: {e}",
             )
 
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=new_user.email,
             subject=f"Welcome! Your Invitation Details",
             template_name="new_account_invite.html", # Placeholder template
@@ -625,7 +625,7 @@ class UserService:
         except Exception as e:
             raise ValueError(f"Error parsing file: {str(e)}")
 
-    def start_bulk_invite(
+    async def start_bulk_invite(
         self, db: Session, file_content: bytes, filename: str,
         bulk_invite_request: BulkInviteRequest, school: School,
         current_user_context: UserContext
@@ -652,7 +652,7 @@ class UserService:
 
             self._bulk_invite_tasks[task_id] = task_status
 
-            self._process_bulk_invites(db, df, bulk_invite_request, school, current_user_context, task_id)
+            await self._process_bulk_invites(db, df, bulk_invite_request, school, current_user_context, task_id)
 
             return task_id
 
@@ -662,7 +662,7 @@ class UserService:
                 detail=f"Failed to start bulk invite: {str(e)}"
             )
 
-    def _process_bulk_invites(
+    async def _process_bulk_invites(
         self, db: Session, df: pd.DataFrame, bulk_invite_request: BulkInviteRequest,
         school: School, current_user_context: UserContext, task_id: str
     ):
@@ -685,9 +685,8 @@ class UserService:
                         level=bulk_invite_request.level
                     )
 
-                    from sqlalchemy import exc
                     try:
-                        invited_user = self.invite_user(
+                        invited_user = await self.invite_user(
                             db, invite_in=invite_data,
                             current_user_context=current_user_context
                         )

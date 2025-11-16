@@ -57,14 +57,14 @@ def update_user_me(
     return APIResponse(message="User profile updated successfully", data=User.model_validate(updated_user))
 
 @router.post("/invite", response_model=APIResponse[User])
-def invite_user(
+async def invite_user(
     *,
     db: Session = Depends(deps.get_transactional_db),
     invite_in: UserInvite,
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
     """Invite a new user (teacher, student, admin, or member) to the current user's school or platform."""
-    invited_user = user_service.invite_user(
+    invited_user = await user_service.invite_user(
         db, current_user_context=context, invite_in=invite_in
     )
 
@@ -97,7 +97,7 @@ async def bulk_invite_users(
         )
 
     try:
-        task_id = user_service.start_bulk_invite(
+        task_id = await user_service.start_bulk_invite(
             db=db,
             file_content=file_content,
             filename=file.filename,
@@ -154,9 +154,9 @@ async def change_password(
     credentials: HTTPAuthorizationCredentials = Depends(deps.http_bearer)
 ):
     try:
-        user_service.change_password(db, current_user, old_password, new_password)
+        await user_service.change_password(db, current_user, old_password, new_password)
 
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=current_user.email,
             subject="Password Reset Successfully",
             template_name="reset-password-success.html",

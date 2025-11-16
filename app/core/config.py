@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     APPLE_CLIENT_ID: Optional[str] = None
     APPLE_CLIENT_SECRET: Optional[str] = None
 
+    # Cache
+    CACHE_TTL: int = 300
+    REDIS_URL: Optional[str] = None
+
     class Config:
         env_file = ".env"
 

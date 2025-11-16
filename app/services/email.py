@@ -6,6 +6,21 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, To
 
 from app.core.config import settings
+from app.utils.events import event_bus
+import asyncio
+
+async def handle_email_send_requested(data):
+    try:
+        await EmailService._send_email_via_sendgrid(
+            data["to_email"],
+            data["subject"],
+            data["template_name"],
+            data["template_context"]
+        )
+    except Exception as e:
+        logging.error(f"Failed to send email to {data['to_email']}: {e}")
+
+event_bus.subscribe("email_send_requested", handle_email_send_requested)
 
 class EmailService:
     _template_env = None
@@ -56,21 +71,29 @@ class EmailService:
 
 
     @classmethod
-    def send_email(
+    async def send_email(
         cls,
         to_email: str,
         subject: str,
         template_name: str,
         template_context: dict,
     ):
-        """
-        Send an email using SendGrid.
+        await event_bus.publish("email_send_requested", {
+            "to_email": to_email,
+            "subject": subject,
+            "template_name": template_name,
+            "template_context": template_context,
+            "timestamp": datetime.utcnow().isoformat()
+        })
 
-        :param to_email: Recipient email address
-        :param subject: Email subject
-        :param template_name: Name of the template file
-        :param template_context: Dictionary of template variables
-        """
+    @classmethod
+    async def _send_email_via_sendgrid(
+        cls,
+        to_email: str,
+        subject: str,
+        template_name: str,
+        template_context: dict,
+    ):
         try:
             html_content = cls.render_template(template_name, template_context)
 

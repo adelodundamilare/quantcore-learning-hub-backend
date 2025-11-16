@@ -772,7 +772,7 @@ class StripeService:
         if stripe_customer:
             user = crud_user.get(db, id=stripe_customer.user_id)
             if user:
-                EmailService.send_email(
+                await EmailService.send_email(
                     to_email=user.email,
                     subject="Your payment was successful",
                     template_name="payment_success.html",
@@ -832,7 +832,7 @@ class StripeService:
             )
             crud_subscription.create(db, obj_in=db_subscription)
 
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=user.email,
             subject="Welcome to QuantCore Learning Hub!",
             template_name="welcome-verify.html",

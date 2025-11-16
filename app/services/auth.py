@@ -96,7 +96,7 @@ class AuthService:
         crud_token_denylist.create(db, obj_in=TokenDenylistCreate(jti=token_data.jti, exp=datetime.fromtimestamp(token_data.exp)))
         db.commit()
 
-    def request_password_reset(self, db: Session, *, email: str, frontend_base_url: str) -> None:
+    async def request_password_reset(self, db: Session, *, email: str, frontend_base_url: str) -> None:
         user = crud_user.get_by_email(db, email=email)
         if not user:
             return
@@ -115,7 +115,7 @@ class AuthService:
         )
 
         reset_link = f"{frontend_base_url}/reset-password?token={reset_token_value}"
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=user.email,
             subject="Password Reset Request",
             template_name="reset_password.html",
@@ -160,7 +160,7 @@ class AuthService:
             notification_type="account_verified"
         )
 
-    def resend_verification_code(self, db: Session, *, email: str) -> None:
+    async def resend_verification_code(self, db: Session, *, email: str) -> None:
         user = crud_user.get_by_email(db, email=email)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
@@ -183,7 +183,7 @@ class AuthService:
         )
         db.commit()
 
-        EmailService.send_email(
+        await EmailService.send_email(
             to_email=user.email,
             subject="Resend Account Verification Code",
             template_name="verify_account.html",

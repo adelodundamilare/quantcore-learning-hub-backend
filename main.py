@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks, stock_options
+from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks, stock_options, enrollment
 from app.realtime import websockets as websocket_events
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
@@ -44,6 +44,7 @@ app.include_router(course.router, prefix="/courses", tags=["Courses"])
 app.include_router(curriculum.router, tags=["Curriculum"])
 app.include_router(exam.router, prefix="/exams", tags=["Exams"])
 app.include_router(course_progress.router, tags=["Course Progress"])
+app.include_router(enrollment.router, prefix="/enrollments", tags=["Enrollments"])
 app.include_router(reward_rating.router, tags=["Reward & Rating"])
 app.include_router(report.router, tags=["Reports"])
 
@@ -95,7 +96,8 @@ async def _compute_school_leaderboard_async(school_id, semaphore):
 async def startup_event():
     websocket_events.register_websocket_events(sio)
     asyncio.create_task(websocket_events.stream_prices_socketio(sio))
-    asyncio.create_task(_run_leaderboard_precomputation())
+    # Event-driven leaderboards eliminate need for hourly batch computation
+    # asyncio.create_task(_run_leaderboard_precomputation())
 
 if __name__ == "__main__":
     import uvicorn

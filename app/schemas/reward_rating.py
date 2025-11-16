@@ -5,9 +5,9 @@ from datetime import datetime
 
 class CourseRewardBase(BaseModel):
     enrollment_id: int
-    # reward_type: str
-    # reward_title: str
-    # reward_description: Optional[str] = None
+    reward_type: str
+    reward_title: str
+    reward_description: Optional[str] = None
     points: int = 0
     # badge_url: Optional[str] = None
     # certificate_url: Optional[str] = None

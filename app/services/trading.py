@@ -39,6 +39,9 @@ from app.services.polygon import polygon_service
 from app.services.logo import logo_service
 from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
 from app.utils.permission import PermissionHelper as permission_helper
+from app.utils.cache import get, set, delete
+from app.utils.events import event_bus
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -614,6 +617,16 @@ class TradingService:
 
         new_trade = crud_trade_order.create(db, obj_in=trade_data)
 
+        delete(f"trading_summary_{user_id}")
+
+        await event_bus.publish("trade_executed", {
+            "student_id": user_id,
+            "symbol": order_in.symbol,
+            "quantity": order_in.quantity,
+            "executed_price": float(executed_price),
+            "total_amount": float(total_amount)
+        })
+
         logger.info(
             f"Order placed: user={user_id}, symbol={order_in.symbol}, "
             f"type={order_in.order_type}, qty={order_in.quantity}, price={executed_price}"
@@ -898,6 +911,11 @@ class TradingService:
         db: Session,
         user_id: int
     ) -> TradingAccountSummary:
+        cache_key = f"trading_summary_{user_id}"
+        cached = get(cache_key)
+        if cached:
+            return cached
+
         fund_additions = crud_transaction.get_multi_by_user_and_type(
             db, user_id=user_id, transaction_type="fund_addition"
         )
@@ -935,11 +953,14 @@ class TradingService:
         trading_profit = max(Decimal("0.00"), net_pl)
         trading_loss = abs(min(Decimal("0.00"), net_pl))
 
-        return TradingAccountSummary(
+        result = TradingAccountSummary(
             starting_capital=float(starting_capital),
             current_balance=float(current_cash_balance),
             trading_profit=float(trading_profit),
             trading_loss=float(trading_loss)
         )
+
+        set(cache_key, result, 300)
+        return result
 
 trading_service = TradingService()

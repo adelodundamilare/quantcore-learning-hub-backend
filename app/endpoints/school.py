@@ -15,7 +15,7 @@ from app.core.constants import RoleEnum
 router = APIRouter()
 
 @router.post("/", response_model=APIResponse[None])
-def create_school(
+async def create_school(
     *,
     db: Session = Depends(deps.get_transactional_db),
     invite_in: AdminSchoolInvite,
@@ -28,7 +28,7 @@ def create_school(
             detail="Only Admins can create schools."
         )
 
-    new_school = user_service.admin_invite_user(
+    await user_service.admin_invite_user(
         db, invite_in=invite_in
     )
 
