@@ -72,7 +72,6 @@ class EmailService:
         :param template_context: Dictionary of template variables
         """
         try:
-            # Render HTML content with template inheritance support
             html_content = cls.render_template(template_name, template_context)
 
             from_email = (
@@ -81,7 +80,6 @@ class EmailService:
                 else settings.EMAILS_FROM_EMAIL
             )
 
-            # Create SendGrid message
             message = Mail(
                 from_email=from_email,
                 to_emails=To(to_email),
@@ -89,7 +87,6 @@ class EmailService:
                 html_content=html_content
             )
 
-            # Send email via SendGrid
             sendgrid_client = SendGridAPIClient(settings.SENDGRID_API_KEY)
             response = sendgrid_client.send(message)
 

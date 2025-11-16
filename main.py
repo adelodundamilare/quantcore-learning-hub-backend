@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from app.core.config import settings
 from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks, stock_options
 from app.realtime import websockets as websocket_events
@@ -29,6 +30,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 app.mount("/socket.io", socketio.ASGIApp(sio))
 
 app.add_exception_handler(Exception, global_exception_handler)
@@ -57,18 +60,36 @@ app.include_router(stock_options.router, prefix="/stock-options", tags=["Stock O
 
 async def _run_leaderboard_precomputation():
     while True:
-        db = SessionLocal()
         try:
-            schools = crud_school.get_multi(db)
+            schools = await _get_schools_async()
+            semaphore = asyncio.Semaphore(3)
+            tasks = []
+
             for school in schools:
-                await report_service.precompute_trading_leaderboard(db, school_id=school.id, current_user_context=None)
-                await report_service.precompute_leaderboard(db, school_id=school.id)
+                tasks.append(_compute_school_leaderboard_async(school.id, semaphore))
+
+            await asyncio.gather(*tasks, return_exceptions=True)
             print(f"Successfully precomputed leaderboards at {datetime.utcnow()}")
         except Exception as e:
             print(f"Error during leaderboard precomputation: {e}")
+
+        await asyncio.sleep(60*60)
+
+async def _get_schools_async():
+    db = SessionLocal()
+    try:
+        return crud_school.get_multi(db)
+    finally:
+        db.close()
+
+async def _compute_school_leaderboard_async(school_id, semaphore):
+    async with semaphore:
+        db = SessionLocal()
+        try:
+            await report_service.precompute_leaderboard(db, school_id=school_id)
+            await report_service.precompute_trading_leaderboard(db, school_id=school_id, current_user_context=None)
         finally:
             db.close()
-        await asyncio.sleep(60*60)
 
 @app.on_event("startup")
 async def startup_event():

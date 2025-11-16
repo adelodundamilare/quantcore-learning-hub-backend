@@ -1,8 +1,9 @@
 from typing import List
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.course import Course as CourseModel
+from app.models.lesson_progress import LessonProgress
 from app.schemas.course import CourseCreate, CourseUpdate, Course as CourseSchema
 from app.schemas.user import UserContext, User
 from app.core.constants import RoleEnum
@@ -236,6 +237,15 @@ class CourseService:
 
         return course_schema
 
+    def _batch_enrich_courses_with_progress(self, db: Session, course_ids: List[int], user_id: int) -> List[CourseSchema]:
+        courses = crud_course.get_batch_with_relationships(db, course_ids)
+        course_map = {course.id: course for course in courses}
+        enriched_courses = []
+        for course_id in course_ids:
+            if course_id in course_map:
+                enriched_courses.append(self._enrich_course_with_progress(db, course_map[course_id], user_id))
+        return enriched_courses
+
     def get_course(self, db: Session, course_id: int, current_user_context: UserContext) -> CourseSchema:
         course_model = crud_course.get(db, id=course_id)
         if not course_model:
@@ -269,9 +279,8 @@ class CourseService:
         else:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view courses.")
 
-        enriched_courses = []
-        for course_model in courses:
-            enriched_courses.append(self._enrich_course_with_progress(db, course_model, current_user_context.user.id))
+        course_ids = [course.id for course in courses]
+        enriched_courses = self._batch_enrich_courses_with_progress(db, course_ids, current_user_context.user.id)
         return enriched_courses
 
     def get_user_courses(self, db: Session, current_user_context: UserContext) -> List[CourseSchema]:
@@ -304,7 +313,6 @@ class CourseService:
 
     def update_student_courses_bulk(self, db: Session, student_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
         permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
-
         permission_helper.validate_user_role_in_school(db, student_id, current_user_context.school.id, RoleEnum.STUDENT)
 
         current_courses = crud_course.get_student_courses(db, user_id=student_id)
@@ -318,18 +326,28 @@ class CourseService:
         unenrolled_count = 0
 
         for course_id in to_unenroll:
-            try:
-                self.unenroll_student(db, course_id, student_id, current_user_context)
+            enrollment = crud_enrollment.get_by_user_and_course(db, user_id=student_id, course_id=course_id)
+            if enrollment:
+                crud_course.unenroll_student_from_course(db, course=crud_course.get(db, id=course_id), user=crud_user.get(db, id=student_id))
+                crud_enrollment.delete(db, id=enrollment.id)
                 unenrolled_count += 1
-            except HTTPException:
-                pass
 
-        for course_id in to_enroll:
-            try:
-                self.enroll_student(db, course_id, student_id, current_user_context)
-                enrolled_count += 1
-            except HTTPException:
-                pass
+        if to_enroll:
+            bulk_enrollments = []
+            for course_id in to_enroll:
+                course = crud_course.get(db, id=course_id)
+                if course:
+                    crud_course.enroll_student_in_course(db, course=course, user=crud_user.get(db, id=student_id))
+                    bulk_enrollments.append(CourseEnrollmentCreate(
+                        user_id=student_id,
+                        course_id=course_id,
+                        status=EnrollmentStatusEnum.NOT_STARTED,
+                        progress_percentage=0
+                    ))
+                    enrolled_count += 1
+
+            if bulk_enrollments:
+                crud_enrollment.create_multi(db, objs_in=bulk_enrollments, commit=False)
 
         return {
             "enrolled_count": enrolled_count,

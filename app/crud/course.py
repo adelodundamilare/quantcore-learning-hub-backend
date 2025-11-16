@@ -146,4 +146,15 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         return query.count()
 
 
+    def get_batch_with_relationships(self, db: Session, course_ids: List[int]) -> List[Course]:
+        if not course_ids:
+            return []
+
+        return db.query(Course).options(
+            selectinload(Course.enrollments),
+            selectinload(Course.enrollments).selectinload(CourseEnrollment.lesson_progress),
+            selectinload(Course.curriculums).selectinload(Curriculum.lessons)
+        ).filter(Course.id.in_(course_ids)).filter(Course.deleted_at.is_(None)).all()
+
+
 course = CRUDCourse(Course)
