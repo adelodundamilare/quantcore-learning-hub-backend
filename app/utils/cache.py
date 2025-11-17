@@ -8,6 +8,7 @@ _cache_lock = threading.Lock()
 
 def get(key):
     with _cache_lock:
+        return None
         item = _memory_cache.get(key)
         if item and time.time() < item["expiry"]:
             return item["value"]
