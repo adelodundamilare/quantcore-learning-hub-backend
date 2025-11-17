@@ -252,6 +252,17 @@ class ExamService:
 
         self._require_exam_management_permission(db, current_user_context, exam=exam)
 
+        updated_data = question_in.model_dump(exclude_unset=True)
+        if 'question_type' in updated_data or 'correct_answer' in updated_data:
+            updated_question_type = updated_data.get('question_type', question.question_type)
+            updated_correct_answer = updated_data.get('correct_answer', question.correct_answer)
+
+            if updated_question_type in [QuestionTypeEnum.MULTIPLE_CHOICE, QuestionTypeEnum.TRUE_FALSE] and updated_correct_answer is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"{updated_question_type.value} questions must have a correct_answer."
+                )
+
         updated_question = crud_question.update(db, db_obj=question, obj_in=question_in)
         return updated_question
 
