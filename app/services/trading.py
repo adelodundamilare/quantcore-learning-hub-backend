@@ -481,6 +481,8 @@ class TradingService:
             }
         )
 
+        delete(f"trading_summary_{student_id}")
+
         return AccountBalanceSchema.model_validate(account)
 
     # ============ PORTFOLIO METHODS ============
