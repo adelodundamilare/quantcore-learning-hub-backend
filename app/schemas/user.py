@@ -227,3 +227,17 @@ class AdminUserResponse(BaseModel):
     role: str
 
     model_config = ConfigDict(from_attributes=True)
+
+class SuperAdminUserSummary(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    is_active: bool
+    roles: List[str]
+    schools: List[str]
+    created_at: datetime
+
+class SuperAdminUserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    is_active: Optional[bool] = None

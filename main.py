@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.core.config import settings
-from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks, stock_options, enrollment
+from app.endpoints import auth, account, course, utility, school, role, permission, notification, curriculum, exam, reward_rating, course_progress, report, trading, billing, webhooks, stock_options, enrollment, admin
 from app.realtime import websockets as websocket_events
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
@@ -50,6 +50,7 @@ app.include_router(report.router, tags=["Reports"])
 
 app.include_router(role.router, prefix="/roles", tags=["Roles"])
 app.include_router(permission.router, prefix="/permissions", tags=["Permissions"])
+app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(notification.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(utility.router, prefix="/utility", tags=["utility"])
 

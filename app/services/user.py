@@ -16,9 +16,11 @@ from app.crud.school import school as crud_school
 from app.crud.course_enrollment import course_enrollment as crud_course_enrollment
 from app.crud.curriculum import curriculum as crud_curriculum
 from app.crud.course import course as crud_course
+from app.crud.base import PaginatedResponse
 from app.schemas.user import (
     TeacherProfile, TeacherUpdate, UserContext, UserInvite, User as UserSchema,
-    StudentProfile, BulkInviteRequest, BulkInviteResult, BulkInviteStatus
+    StudentProfile, BulkInviteRequest, BulkInviteResult, BulkInviteStatus,
+    SuperAdminUserSummary, SuperAdminUserUpdate
 )
 from app.models.user import User
 from app.models.school import School
@@ -790,5 +792,69 @@ class UserService:
         logger.info(f"User deleted by admin: {user.email}")
 
         return UserSchema.model_validate(deleted_user)
+
+    def get_all_users_for_super_admin(self, db: Session, skip: int = 0, limit: int = 50) -> List[SuperAdminUserSummary]:
+        users = crud_user.get_multi(db, skip=skip, limit=limit)
+        result = []
+        for user in users:
+            roles = [assoc.role.name for assoc in user.school_associations if assoc.role]
+            schools = [assoc.school.name for assoc in user.school_associations if assoc.school]
+            result.append(SuperAdminUserSummary(
+                id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                is_active=user.is_active,
+                roles=roles,
+                schools=schools,
+                created_at=user.created_at
+            ))
+        return result
+
+    def get_all_users_for_super_admin_paginated(self, db: Session, skip: int = 0, limit: int = 50):
+        users = self.get_all_users_for_super_admin(db, skip=skip, limit=limit)
+        total_count = db.query(crud_user.model).count()
+
+        page = skip // limit + 1 if limit > 0 else 1
+        pages = (total_count + limit - 1) // limit if limit > 0 else 1
+        has_next = page < pages
+        has_previous = page > 1
+
+        return PaginatedResponse(
+            items=users,
+            total=total_count,
+            page=page,
+            size=limit,
+            pages=pages,
+            has_next=has_next,
+            has_previous=has_previous
+        )
+
+    def get_user_for_super_admin(self, db: Session, user_id: int) -> UserSchema:
+        user = crud_user.get(db, id=user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return UserSchema.model_validate(user)
+
+    def update_user_for_super_admin(self, db: Session, user_id: int, update_data: SuperAdminUserUpdate) -> UserSchema:
+        user = crud_user.get(db, id=user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        if update_data.full_name is not None or update_data.email is not None or update_data.is_active is not None:
+            update_dict = {}
+            if update_data.full_name is not None:
+                update_dict["full_name"] = update_data.full_name
+            if update_data.email is not None:
+                existing_user = crud_user.get_by_email(db, email=update_data.email)
+                if existing_user and existing_user.id != user_id:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+                update_dict["email"] = update_data.email
+            if update_data.is_active is not None:
+                update_dict["is_active"] = update_data.is_active
+
+            updated_user = crud_user.update(db, db_obj=user, obj_in=update_dict)
+
+            logger.info(f"User {user_id} updated by super admin: {update_dict}")
+        return UserSchema.model_validate(user)
 
 user_service = UserService()
