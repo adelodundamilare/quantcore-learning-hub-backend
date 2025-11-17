@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.crud.school import school as crud_school
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
+from app.crud.course import course as crud_course
 from app.schemas.school import SchoolCreate, AdminSchoolDataSchema
 from app.schemas.user import UserCreate, UserContext
 from app.crud.base import PaginatedResponse
@@ -134,6 +135,15 @@ class SchoolService:
         school = crud_school.get(db=db, id=school_id)
         if not school:
             raise HTTPException(status_code=404, detail="School not found")
+
+        if school.deleted_at:
+            raise HTTPException(status_code=400, detail="School is already deleted")
+
+        courses = crud_course.get_courses_by_school(db, school_id=school_id)
+        for course in courses:
+            crud_course.bulk_soft_delete_related_entities(db, course.id)
+
+        crud_school.bulk_soft_delete_related_entities(db, school_id)
 
         return crud_school.delete(db=db, id=school_id)
 

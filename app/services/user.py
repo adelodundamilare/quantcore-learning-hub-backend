@@ -784,6 +784,7 @@ class UserService:
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+        crud_user.bulk_soft_delete_related_entities(db, user_id)
         deleted_user = crud_user.delete(db, id=user_id)
 
         logger.info(f"User deleted by admin: {user.email}")

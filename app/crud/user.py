@@ -378,4 +378,19 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             user_school_association.c.role_id == student_role.id
         ).all()
 
+    def bulk_soft_delete_related_entities(self, db: Session, user_id: int) -> None:
+        now = datetime.utcnow()
+
+        db.query(ExamAttempt).filter(ExamAttempt.user_id == user_id).update({"deleted_at": now})
+
+        db.query(CourseEnrollment).filter(CourseEnrollment.user_id == user_id).update({"deleted_at": now})
+
+        user_school_association.update().where(user_school_association.c.user_id == user_id)\
+                                     .where(user_school_association.c.deleted_at.is_(None))\
+                                     .values(deleted_at=now)
+
+        enrollment_subquery = db.query(CourseEnrollment.id).filter(CourseEnrollment.user_id == user_id).subquery()
+        db.query(LessonProgress).filter(LessonProgress.enrollment_id.in_(enrollment_subquery)).update({"deleted_at": now})
+
+
 user = CRUDUser(User)

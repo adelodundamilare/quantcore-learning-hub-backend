@@ -84,4 +84,11 @@ class CRUDSchool(CRUDBase[School, SchoolCreate, SchoolUpdate]):
 
         return query.all()
 
+    def bulk_soft_delete_related_entities(self, db: Session, school_id: int) -> None:
+        from datetime import datetime
+        now = datetime.utcnow()
+
+        db.query(user_school_association).filter(user_school_association.c.school_id == school_id)\
+                                        .update({"deleted_at": now})
+
 school = CRUDSchool(School)
