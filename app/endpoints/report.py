@@ -65,14 +65,14 @@ def get_school_dashboard_stats(
 
 
 @router.get("/admin/dashboard/report", response_model=APIResponse[AdminDashboardReportSchema])
-def get_admin_dashboard_report(
+async def get_admin_dashboard_report(
     *,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None)
 ):
-    report_data = report_service.get_admin_dashboard_report(db, current_user_context=context, start_date=start_date, end_date=end_date)
+    report_data = await report_service.get_admin_dashboard_report(db, current_user_context=context, start_date=start_date, end_date=end_date)
     return APIResponse(message="Admin dashboard report retrieved successfully", data=report_data)
 
 

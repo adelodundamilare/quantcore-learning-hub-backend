@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # Cache
     CACHE_TTL: int = 300
     REDIS_URL: Optional[str] = None
+    TEST_DATABASE_URL: Optional[str] = None
 
     class Config:
         env_file = ".env"
