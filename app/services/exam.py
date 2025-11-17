@@ -11,7 +11,7 @@ from app.schemas.exam import ExamCreate, ExamUpdate, Exam
 from app.schemas.question import QuestionCreate, QuestionUpdate, Question
 from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
-from app.core.constants import CourseLevelEnum, StudentExamStatusEnum
+from app.core.constants import CourseLevelEnum, StudentExamStatusEnum, QuestionTypeEnum
 
 
 class ExamService:
@@ -21,6 +21,13 @@ class ExamService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Exam must be associated with a course or a curriculum."
+            )
+
+    def _validate_question_correct_answer(self, question_in):
+        if question_in.question_type in [QuestionTypeEnum.MULTIPLE_CHOICE, QuestionTypeEnum.TRUE_FALSE] and question_in.correct_answer is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{question_in.question_type.value} questions must have a correct_answer."
             )
 
     def _get_course_from_exam_context(self, db: Session, exam: Optional[Exam] = None,
@@ -192,6 +199,8 @@ class ExamService:
 
         self._require_exam_management_permission(db, current_user_context, exam=exam)
 
+        self._validate_question_correct_answer(question_in)
+
         new_question = crud_question.create(db, obj_in=question_in)
         db.flush()
         return new_question
@@ -206,6 +215,9 @@ class ExamService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
 
         self._require_exam_management_permission(db, current_user_context, exam=exam)
+
+        for question in questions_in:
+            self._validate_question_correct_answer(question)
 
         new_questions = crud_question.create_multi(db, objs_in=questions_in)
         db.flush()
