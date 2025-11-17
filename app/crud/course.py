@@ -7,6 +7,7 @@ from app.crud.base import CRUDBase
 from app.models.course import Course, course_teachers_association, course_students_association
 from app.models.course_enrollment import CourseEnrollment
 from app.models.curriculum import Curriculum
+from app.models.exam import Exam
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseUpdate
 
@@ -145,7 +146,6 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             query = query.filter(Course.created_at <= end_date)
         return query.count()
 
-
     def get_batch_with_relationships(self, db: Session, course_ids: List[int]) -> List[Course]:
         if not course_ids:
             return []
@@ -155,6 +155,15 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             selectinload(Course.enrollments).selectinload(CourseEnrollment.lesson_progress),
             selectinload(Course.curriculums).selectinload(Curriculum.lessons)
         ).filter(Course.id.in_(course_ids)).filter(Course.deleted_at.is_(None)).all()
+
+    def bulk_soft_delete_related_entities(self, db: Session, course_id: int) -> None:
+        now = datetime.utcnow()
+
+        db.query(Exam).filter(Exam.course_id == course_id).update({"deleted_at": now})
+        db.query(Curriculum).filter(Curriculum.course_id == course_id).update({"deleted_at": now})
+
+        curiculum_ids_subquery = db.query(Curriculum.id).filter(Curriculum.course_id == course_id).subquery()
+        db.query(Exam).filter(Exam.curriculum_id.in_(curiculum_ids_subquery)).update({"deleted_at": now})
 
 
 course = CRUDCourse(Course)

@@ -1,9 +1,8 @@
 from typing import List
+from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session, selectinload
 
 from app.models.course import Course as CourseModel
-from app.models.lesson_progress import LessonProgress
 from app.schemas.course import CourseCreate, CourseUpdate, Course as CourseSchema
 from app.schemas.user import UserContext, User
 from app.core.constants import RoleEnum
@@ -80,6 +79,7 @@ class CourseService:
 
         permission_helper.require_course_management_permission(current_user_context, course)
 
+        crud_course.bulk_soft_delete_related_entities(db, course_id)
         deleted_course = crud_course.delete(db, id=course_id)
         return CourseSchema.model_validate(deleted_course)
 
