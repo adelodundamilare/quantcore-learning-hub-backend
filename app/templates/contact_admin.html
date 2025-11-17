@@ -1,0 +1,43 @@
+{% extends "base.html" %} {% block content %}
+<h2>User Support Request</h2>
+
+<div class="info-block">
+  <div class="label">From:</div>
+  <div class="value">{{ user_name }} ({{ user_email }})</div>
+</div>
+
+<div class="info-block">
+  <div class="label">Subject:</div>
+  <div class="value">{{ subject }}</div>
+</div>
+
+<div class="info-block">
+  <div class="label">Message:</div>
+  <div class="value">{{ message }}</div>
+</div>
+
+{% if screenshot_url %}
+<div class="info-block">
+  <div class="label">Screenshot:</div>
+  <div class="value">
+    <a href="{{ screenshot_url }}" style="color: #4f46e5">View Screenshot</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="info-block">
+  <div class="label">User Role:</div>
+  <div class="value">{{ user_role }}</div>
+</div>
+
+{% if user_school %}
+<div class="info-block">
+  <div class="label">School:</div>
+  <div class="value">{{ user_school }}</div>
+</div>
+{% endif %}
+
+<p style="margin-top: 24px; color: #7d7f83; font-size: 0.875rem">
+  Please respond to this user at your earliest convenience.
+</p>
+{% endblock %}
