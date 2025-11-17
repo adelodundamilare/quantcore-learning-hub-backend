@@ -53,7 +53,7 @@ class ExamAttemptService:
 
         permission_helper.require_course_view_permission(current_user_context, course)
 
-        if not permission_helper.is_student_of_course(current_user_context.user, course):
+        if not permission_helper.is_student_of_course(current_user_context.user.id, course):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You must be a student of this course to take this exam."

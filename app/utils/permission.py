@@ -28,12 +28,12 @@ class PermissionHelper:
         return context.role.name == RoleEnum.STUDENT
 
     @staticmethod
-    def is_teacher_of_course(user: User, course: Course) -> bool:
-        return user.id in [teacher.id for teacher in course.teachers]
+    def is_teacher_of_course(user_id: int, course: Course) -> bool:
+        return user_id in [teacher.id for teacher in course.teachers]
 
     @staticmethod
-    def is_student_of_course(user: User, course: Course) -> bool:
-        return user.id in [student.id for student in course.students]
+    def is_student_of_course(user_id: int, course: Course) -> bool:
+        return user_id in [student.id for student in course.students]
 
     @staticmethod
     def belongs_to_school(context: UserContext, school_id: int) -> bool:
@@ -61,7 +61,7 @@ class PermissionHelper:
             return False
         if PermissionHelper.is_school_admin(context):
             return True
-        if PermissionHelper.is_teacher(context) and PermissionHelper.is_teacher_of_course(context.user, course):
+        if PermissionHelper.is_teacher(context) and PermissionHelper.is_teacher_of_course(context.user.id, course):
             return True
         return False
 
@@ -75,9 +75,9 @@ class PermissionHelper:
             return False
         if PermissionHelper.is_school_admin(context):
             return True
-        if PermissionHelper.is_teacher(context) and PermissionHelper.is_teacher_of_course(context.user, course):
+        if PermissionHelper.is_teacher(context) and PermissionHelper.is_teacher_of_course(context.user.id, course):
             return True
-        if PermissionHelper.is_student(context) and PermissionHelper.is_student_of_course(context.user, course):
+        if PermissionHelper.is_student(context) and PermissionHelper.is_student_of_course(context.user.id, course):
             return True
         return False
 

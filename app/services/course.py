@@ -96,7 +96,7 @@ class CourseService:
 
         permission_helper.validate_user_role_in_school(db, teacher_user.id, course.school.id, RoleEnum.TEACHER)
 
-        if permission_helper.is_teacher_of_course(teacher_user, course):
+        if permission_helper.is_teacher_of_course(teacher_user.id, course):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already a teacher for this course.")
 
         crud_course.add_teacher_to_course(db, course=course, user=teacher_user)
@@ -124,7 +124,7 @@ class CourseService:
         if not teacher_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher user not found.")
 
-        if not permission_helper.is_teacher_of_course(teacher_user, course):
+        if not permission_helper.is_teacher_of_course(teacher_user.id, course):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not a teacher for this course.")
 
         crud_course.remove_teacher_from_course(db, course=course, user=teacher_user)
@@ -154,7 +154,7 @@ class CourseService:
 
         permission_helper.validate_user_role_in_school(db, student_user.id, course.school.id, RoleEnum.STUDENT)
 
-        if permission_helper.is_student_of_course(student_user, course):
+        if permission_helper.is_student_of_course(student_user.id, course):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already enrolled in this course.")
 
         crud_course.enroll_student_in_course(db, course=course, user=student_user)
@@ -190,7 +190,7 @@ class CourseService:
         if not student_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student user not found.")
 
-        if not permission_helper.is_student_of_course(student_user, course):
+        if not permission_helper.is_student_of_course(student_user.id, course):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not enrolled in this course.")
 
         crud_course.unenroll_student_from_course(db, course=course, user=student_user)

@@ -62,7 +62,7 @@ class ExamService:
         permission_helper.require_course_view_permission(current_user_context, course)
 
         if permission_helper.is_teacher(current_user_context):
-            if not permission_helper.is_teacher_of_course(current_user_context.user, course):
+            if not permission_helper.is_teacher_of_course(current_user_context.user.id, course):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You must be a teacher of this course to manage exams."
