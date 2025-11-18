@@ -27,6 +27,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
     def get_by_email(self, db: Session, *, email: str) -> User | None:
         return db.query(User).filter(User.email == email, User.deleted_at == None).first()
 
+    def get_by_email_with_soft_deleted(self, db: Session, *, email: str) -> User | None:
+        return db.query(User).filter(User.email == email).first()
+
     def get_user_contexts(self, db: Session, *, user_id: int) -> List[dict]:
         results = (
             db.query(School, Role)

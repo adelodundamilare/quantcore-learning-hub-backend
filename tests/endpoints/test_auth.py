@@ -1,8 +1,6 @@
-from app.core.constants import ADMIN_SCHOOL_NAME, RoleEnum
+from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
-from app.crud.school import school as crud_school
 from app.crud.role import role as crud_role
-from app.core.security import get_password_hash
 
 import uuid
 
@@ -26,21 +24,11 @@ class TestAuthEndpoints:
         })
         assert 200 <= response.status_code < 300
 
-    def test_verify_account_smoke(self, client, db_session):
+    def test_verify_account_smoke(self, client, db_session, user_factory):
         test_email = "verify.test@example.com"
         existing_user = crud_user.get_by_email(db_session, email=test_email)
         if not existing_user:
-            admin_school = crud_school.get_by_name(db_session, name=ADMIN_SCHOOL_NAME)
-            super_admin_role = crud_role.get_by_name(db_session, name=RoleEnum.SUPER_ADMIN)
-
-            user_data = {
-                "full_name": "Verify Test User",
-                "email": test_email,
-                "hashed_password": get_password_hash("testpass123"),
-                "is_active": False
-            }
-            test_user = crud_user.create(db_session, obj_in=user_data)
-            crud_user.add_user_to_school(db_session, user=test_user, school=admin_school, role=super_admin_role)
+            user_factory(test_email)
 
         response = client.post("/auth/verify-account", json={
             "email": test_email,
@@ -48,43 +36,45 @@ class TestAuthEndpoints:
         })
         assert 200 <= response.status_code < 500
 
-    def test_resend_verification_code_smoke(self, client, db_session):
+    def test_resend_verification_code_smoke(self, client, db_session, user_factory):
         test_email = "resend.test@example.com"
         existing_user = crud_user.get_by_email(db_session, email=test_email)
         if not existing_user:
-            admin_school = crud_school.get_by_name(db_session, name=ADMIN_SCHOOL_NAME)
-            super_admin_role = crud_role.get_by_name(db_session, name=RoleEnum.SUPER_ADMIN)
-
-            user_data = {
-                "full_name": "Resend Test User",
-                "email": test_email,
-                "hashed_password": get_password_hash("testpass123"),
-                "is_active": False
-            }
-            test_user = crud_user.create(db_session, obj_in=user_data)
-            crud_user.add_user_to_school(db_session, user=test_user, school=admin_school, role=super_admin_role)
+            user_factory(test_email)
 
         response = client.post("/auth/resend-verification", json={
             "email": test_email
         })
         assert 200 <= response.status_code < 500
 
+    def test_temp_create_super_admin_and_login(self, client, db_session):
+        super_admin_role = crud_role.get_by_name(db_session, name=RoleEnum.SUPER_ADMIN)
+        if not super_admin_role:
+            super_admin_role = crud_role.create(db_session, obj_in={"name": RoleEnum.SUPER_ADMIN.value})
+            db_session.commit()
+
+        super_admin_email = f"temp.superadmin.{uuid.uuid4()}@test.com"
+        create_response = client.post(
+            "/auth/temp-create-super-admin",
+            json={
+                "full_name": "Temp Super Admin",
+                "email": super_admin_email,
+                "password": "testpass123"
+            }
+        )
+        assert 200 <= create_response.status_code < 300
+
+        login_response = client.post(
+            "/auth/login",
+            json={"email": super_admin_email, "password": "testpass123"}
+        )
+        assert 200 <= login_response.status_code < 300
+        assert "access_token" in login_response.json()["data"]["token"]
 
 class TestSoftDeleteIntegration:
-    def test_soft_deleted_user_cannot_login(self, client, db_session):
-        admin_school = crud_school.get_by_name(db_session, name=ADMIN_SCHOOL_NAME)
-        super_admin_role = crud_role.get_by_name(db_session, name=RoleEnum.SUPER_ADMIN)
-
+    def test_soft_deleted_user_cannot_login(self, client, db_session, user_factory):
         unique_email = f"deleted-{uuid.uuid4()}@test.com"
-        user_data = {
-            "full_name": "Deleted User",
-            "email": unique_email,
-            "hashed_password": get_password_hash("testpass123"),
-            "is_active": True
-        }
-
-        deleted_user = crud_user.create(db_session, obj_in=user_data)
-        crud_user.add_user_to_school(db_session, user=deleted_user, school=admin_school, role=super_admin_role)
+        deleted_user = user_factory(unique_email, is_active=True)
 
         crud_user.delete(db_session, id=deleted_user.id)
 
