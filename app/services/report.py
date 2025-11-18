@@ -67,7 +67,7 @@ class ReportService:
         top_performer = TopPerformerSchema(**top_performer_data) if top_performer_data else None
 
         most_active_user_data = crud_user.get_most_active_user_by_lessons_completed(db, school_id=school_id, start_date=start_date, end_date=end_date)
-        most_active_user = MostActiveUserSchema(**most_active_user_data._asdict()) if most_active_user_data else None
+        most_active_user = MostActiveUserSchema(**most_active_user_data) if most_active_user_data else None
 
         return SchoolReportSchema(
             total_courses_count=total_courses_count,
