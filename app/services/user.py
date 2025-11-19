@@ -538,13 +538,8 @@ class UserService:
             if not association:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User is not a student in this school.")
 
-        assigned_lessons_count = 0
         enrollments = crud_course_enrollment.get_by_user(db, user_id=student_id)
-        for enrollment in enrollments:
-            if enrollment.course:
-                curriculums = crud_curriculum.get_by_course(db, course_id=enrollment.course.id)
-                for curriculum in curriculums:
-                    assigned_lessons_count += len(curriculum.lessons)
+        assigned_lessons_count = len(enrollments)
 
         trading_summary = await trading_service.get_trading_account_summary(db, user_id=student_id)
 
