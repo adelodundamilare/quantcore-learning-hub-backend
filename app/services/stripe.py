@@ -768,6 +768,12 @@ class StripeService:
     async def handle_invoice_paid_event(self, db: Session, event: stripe.Event):
         invoice = event['data']['object']
         customer_id = invoice['customer']
+
+        # Sync status to local database first
+        db_invoice = crud_invoice.get_by_stripe_invoice_id(db, stripe_invoice_id=invoice['id'])
+        if db_invoice and db_invoice.status != invoice['status']:
+            crud_invoice.update(db, db_obj=db_invoice, obj_in={"status": invoice['status']})
+
         stripe_customer = crud_stripe_customer.get_by_stripe_customer_id(db, stripe_customer_id=customer_id)
         if stripe_customer:
             user = crud_user.get(db, id=stripe_customer.user_id)
