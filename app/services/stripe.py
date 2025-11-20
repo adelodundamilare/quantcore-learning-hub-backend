@@ -623,9 +623,11 @@ class StripeService:
                 detail=f"Invalid status transition from '{current_status}' to '{target_status}'. Valid transitions: {', '.join(valid_transitions)}"
             )
 
-    async def delete_invoice(self, db: Session, stripe_invoice_id: str) -> stripe.Invoice:
+    async def delete_invoice(self, db: Session, invoice_identifier: str) -> stripe.Invoice:
         """Soft delete an invoice by voiding it in Stripe and marking as deleted in DB."""
-        db_invoice = crud_invoice.get_by_stripe_invoice_id(db, stripe_invoice_id=stripe_invoice_id)
+        db_invoice = crud_invoice.get_by_invoice_number(db, invoice_number=invoice_identifier)
+        if not db_invoice:
+            db_invoice = crud_invoice.get_by_stripe_invoice_id(db, stripe_invoice_id=invoice_identifier)
         if not db_invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
 
@@ -769,7 +771,6 @@ class StripeService:
         invoice = event['data']['object']
         customer_id = invoice['customer']
 
-        # Sync status to local database first
         db_invoice = crud_invoice.get_by_stripe_invoice_id(db, stripe_invoice_id=invoice['id'])
         if db_invoice and db_invoice.status != invoice['status']:
             crud_invoice.update(db, db_obj=db_invoice, obj_in={"status": invoice['status']})

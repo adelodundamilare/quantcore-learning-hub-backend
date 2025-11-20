@@ -156,3 +156,12 @@ def get_current_user_with_context(
             )
 
     return UserContext(user=user, school=school, role=role)
+
+def get_current_super_admin(context: UserContext = Depends(get_current_user_with_context)) -> UserContext:
+    """Dependency that ensures the current user is a super admin."""
+    if not context.role or context.role.name != RoleEnum.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super Admin access required"
+        )
+    return context

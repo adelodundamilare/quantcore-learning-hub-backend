@@ -39,7 +39,7 @@ from app.services.polygon import polygon_service
 from app.services.logo import logo_service
 from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
 from app.utils.permission import PermissionHelper as permission_helper
-from app.utils.cache import get, set, delete
+from app.utils.cache import get, set, delete, cached
 from app.utils.events import event_bus
 import asyncio
 
@@ -95,6 +95,7 @@ class TradingService:
         new_watchlist = crud_user_watchlist.create(db, obj_in=watchlist_data)
         return UserWatchlistSchema.model_validate(new_watchlist)
 
+    @cached("watchlists:user:{}:{}:{}", ttl=180)  # 3 minutes cache
     async def get_user_watchlists(
         self,
         db: Session,
@@ -351,8 +352,7 @@ class TradingService:
             watchlist.__dict__ | {"stocks": stocks_with_sparkline}
         )
 
-    # ============ ACCOUNT BALANCE METHODS ============
-
+    @cached("balance:user:{}", ttl=60)
     async def get_account_balance(
         self,
         db: Session,
@@ -482,11 +482,11 @@ class TradingService:
         )
 
         delete(f"trading_summary_{student_id}")
+        delete(f"balance:user:{student_id}")
 
         return AccountBalanceSchema.model_validate(account)
 
-    # ============ PORTFOLIO METHODS ============
-
+    @cached("portfolio:user:{}:{}:{}", ttl=120)  # 2 minutes cache
     async def get_portfolio(
         self,
         db: Session,
@@ -620,6 +620,9 @@ class TradingService:
         new_trade = crud_trade_order.create(db, obj_in=trade_data)
 
         delete(f"trading_summary_{user_id}")
+        delete(f"balance:user:{user_id}")
+        delete(f"portfolio:user:{user_id}:0:100")
+        delete(f"trades:user:{user_id}:0:100")
 
         await event_bus.publish("trade_executed", {
             "student_id": user_id,
@@ -773,6 +776,7 @@ class TradingService:
             order_type=order_preview.order_type
         )
 
+    @cached("trades:user:{}:{}:{}", ttl=300)
     def get_trade_history(
         self,
         db: Session,

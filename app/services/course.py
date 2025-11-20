@@ -12,7 +12,7 @@ from app.crud.course import course as crud_course
 from app.crud.course_enrollment import course_enrollment as crud_enrollment
 from app.services.notification import notification_service
 from app.utils.permission import PermissionHelper as permission_helper
-from app.utils.cache import get, set, delete, clear
+from app.utils.cache import get, set, delete, clear, cached
 from app.schemas.course_enrollment import CourseEnrollmentCreate
 from app.models.course_enrollment import EnrollmentStatusEnum
 
@@ -51,6 +51,9 @@ class CourseService:
             crud_course.add_teacher_to_course(db, course=new_course, user=teacher_user)
 
         db.flush()
+
+        delete(f"user_courses_{current_user_context.user.id}")
+        delete(f"courses_all_user_{current_user_context.user.id}_skip_0_limit_100")
 
         notification_service.create_notification(
             db,

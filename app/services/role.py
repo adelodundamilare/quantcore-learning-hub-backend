@@ -34,7 +34,11 @@ class RoleService:
         if len(permissions) != len(unique_permission_ids):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more permission IDs are invalid.")
 
-        return crud_role.update_permissions(db, role=role, permissions=permissions)
+        result = crud_role.update_permissions(db, role=role, permissions=permissions)
+        from app.utils.cache import delete
+        delete(f"role:permissions:{role_id}")
+        delete("permissions:all")
+        return result
 
     def assign_permission_to_role(self, db: Session, *, role_id: int, permission_id: int, current_user_context: UserContext) -> Role:
         if not permission_helper.is_super_admin(current_user_context):
@@ -51,6 +55,10 @@ class RoleService:
         if permission in role.permissions:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Permission already assigned to this role")
 
-        return crud_role.add_permission(db, role=role, permission=permission)
+        result = crud_role.add_permission(db, role=role, permission=permission)
+        from app.utils.cache import delete
+        delete(f"role:permissions:{role_id}")
+        delete("permissions:all")
+        return result
 
 role_service = RoleService()

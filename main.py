@@ -8,11 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
 import socketio
 import asyncio
-from datetime import datetime, timedelta
-
-from app.services.report import report_service
-from app.core.database import SessionLocal
-from app.crud.school import school as crud_school
+from app.endpoints.cache_admin import router as cache_admin_router
+from app.endpoints.cache_monitoring import router as cache_monitoring_router
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
@@ -60,45 +57,14 @@ app.include_router(trading_router, prefix="/trading", tags=["Trading"])
 app.include_router(webhooks.router, tags=["Webhooks"])
 app.include_router(stock_options.router, prefix="/stock-options", tags=["Stock Options"])
 
-async def _run_leaderboard_precomputation():
-    while True:
-        try:
-            schools = await _get_schools_async()
-            semaphore = asyncio.Semaphore(3)
-            tasks = []
-
-            for school in schools:
-                tasks.append(_compute_school_leaderboard_async(school.id, semaphore))
-
-            await asyncio.gather(*tasks, return_exceptions=True)
-            print(f"Successfully precomputed leaderboards at {datetime.utcnow()}")
-        except Exception as e:
-            print(f"Error during leaderboard precomputation: {e}")
-
-        await asyncio.sleep(60*60)
-
-async def _get_schools_async():
-    db = SessionLocal()
-    try:
-        return crud_school.get_multi(db)
-    finally:
-        db.close()
-
-async def _compute_school_leaderboard_async(school_id, semaphore):
-    async with semaphore:
-        db = SessionLocal()
-        try:
-            await report_service.precompute_leaderboard(db, school_id=school_id)
-            await report_service.precompute_trading_leaderboard(db, school_id=school_id, current_user_context=None)
-        finally:
-            db.close()
+# Cache admin endpoints (only in non-production)
+app.include_router(cache_admin_router, prefix="/cache", tags=["cache-admin"])
+app.include_router(cache_monitoring_router, prefix="/admin", tags=["performance"])
 
 @app.on_event("startup")
 async def startup_event():
     websocket_events.register_websocket_events(sio)
     asyncio.create_task(websocket_events.stream_prices_socketio(sio))
-    # Event-driven leaderboards eliminate need for hourly batch computation
-    # asyncio.create_task(_run_leaderboard_precomputation())
 
 if __name__ == "__main__":
     import uvicorn

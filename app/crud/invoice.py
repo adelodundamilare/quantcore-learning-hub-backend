@@ -14,6 +14,14 @@ class CRUDInvoice(CRUDBase[Invoice, BaseModel, BaseModel]):
     def get_by_stripe_invoice_id(self, db: Session, *, stripe_invoice_id: str) -> Optional[Invoice]:
         return db.query(self.model).filter(self.model.stripe_invoice_id == stripe_invoice_id, self.model.deleted_at.is_(None)).first()
 
+    def get_by_invoice_number(self, db: Session, *, invoice_number: str) -> Optional[Invoice]:
+        """Get invoice by Stripe-assigned invoice number (e.g., 'INV-001')"""
+        return db.query(self.model).filter(
+            (self.model.stripe_invoice_id == invoice_number) |
+            (self.model.stripe_invoice_id.contains(invoice_number)),
+            self.model.deleted_at.is_(None)
+        ).first()
+
     def get_multi_by_school(self, db: Session, *, school_id: int) -> List[Invoice]:
         return db.query(self.model).filter(self.model.school_id == school_id, self.model.deleted_at.is_(None)).all()
 

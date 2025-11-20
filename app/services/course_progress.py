@@ -1,4 +1,6 @@
 from datetime import datetime
+from app.utils.cache import get, set, delete
+from app.core.cache_constants import CACHE_KEYS, CACHE_TTL
 from typing import List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -13,6 +15,9 @@ from app.schemas.lesson_progress import LessonProgressCreate
 from app.schemas.reward_rating import CourseRewardCreate
 from app.models.course_enrollment import EnrollmentStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
+from app.crud.exam import exam as crud_exam
+from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
+
 
 
 class CourseProgressService:
@@ -26,6 +31,24 @@ class CourseProgressService:
             )
         return enrollment
 
+    def _has_passed_course_exam(self, db: Session, enrollment) -> bool:
+        """Check if student has passed the final exam for this course."""
+        exams = crud_exam.get_by_course_id(db, course_id=enrollment.course_id)
+
+        if not exams:
+            return False
+
+        for exam in exams:
+            attempts = crud_exam_attempt.get_by_user_and_exam(
+                db, user_id=enrollment.user_id, exam_id=exam.id
+            )
+
+            for attempt in attempts:
+                if attempt.status == "completed" and attempt.passed == True:
+                    return True
+
+        return False
+
     def _update_course_progress(self, db: Session, enrollment):
         progress = enrollment.calculate_progress()
         enrollment.progress_percentage = progress
@@ -35,8 +58,11 @@ class CourseProgressService:
             enrollment.completed_at = datetime.now()
             crud_enrollment.update(db, db_obj=enrollment, obj_in={})
 
-            existing_rewards = crud_reward.get_by_enrollment(db, enrollment_id=enrollment.id)
-            if not existing_rewards:
+        if enrollment.status == EnrollmentStatusEnum.COMPLETED and self._has_passed_course_exam(db, enrollment):
+            existing_completion_rewards = crud_reward.get_by_enrollment_and_type(
+                db, enrollment_id=enrollment.id, reward_type="completion"
+            )
+            if not existing_completion_rewards:
                 reward_in = CourseRewardCreate(
                     enrollment_id=enrollment.id,
                     reward_type="completion",
@@ -46,8 +72,6 @@ class CourseProgressService:
                     awarded_at=datetime.now()
                 )
                 crud_reward.create(db, obj_in=reward_in)
-        else:
-            crud_enrollment.update(db, db_obj=enrollment, obj_in={})
     def start_course(self, db: Session, course_id: int, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):
             raise HTTPException(
@@ -204,7 +228,13 @@ class CourseProgressService:
                     detail="You can only view your own enrollments."
                 )
 
+        cache_key = CACHE_KEYS["user_enrollments"].format(user_id)
+        cached_list = get(cache_key)
+        if cached_list is not None:
+            return cached_list
+
         enrollments = crud_enrollment.get_by_user(db, user_id=user_id)
+        set(cache_key, enrollments, CACHE_TTL["user_enrollments"])
         return enrollments
 
 

@@ -70,7 +70,7 @@ def super_admin_token(client, db_session, _ensure_admin_school_exists, _ensure_s
     )
     db_session.add(super_admin)
     db_session.flush()
-    
+
     user_school_assoc = UserSchoolAssociation(
         user_id=super_admin.id,
         school_id=admin_school.id,
@@ -168,3 +168,41 @@ def user_factory(db_session):
         crud_user.add_user_to_school(db_session, user=test_user, school=admin_school, role=super_admin_role)
         return test_user
     return _user_factory
+
+@pytest.fixture
+def token_for_role(client, db_session, _ensure_admin_school_exists):
+    """Create tokens for different roles - fixes missing fixture error"""
+    admin_school = _ensure_admin_school_exists
+    tokens = {}
+
+    def _create_token_for_role(role_name: str):
+        if role_name in tokens:
+            return tokens[role_name]
+
+        role = crud_role.get_by_name(db_session, name=getattr(RoleEnum, role_name.upper()))
+        if not role:
+            role = crud_role.create(db_session, obj_in={"name": getattr(RoleEnum, role_name.upper()).value})
+            db_session.commit()
+
+        email = f"{role_name}-{uuid.uuid4()}@test.com"
+        user_data = {
+            "full_name": f"Test {role_name}",
+            "email": email,
+            "hashed_password": get_password_hash("testpass123"),
+            "is_active": True
+        }
+        user = crud_user.create(db_session, obj_in=user_data)
+        crud_user.add_user_to_school(db_session, user=user, school=admin_school, role=role)
+        db_session.commit()
+
+        response = client.post("/auth/login", json={"email": email, "password": "testpass123"})
+        body = response.json()
+        token = (
+            body.get("data", {}).get("token", {}).get("access_token")
+            or body.get("token", {}).get("access_token")
+            or body.get("access_token")
+        )
+        tokens[role_name] = token
+        return token
+
+    return _create_token_for_role

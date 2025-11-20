@@ -11,6 +11,8 @@ from app.schemas.exam import ExamCreate, ExamUpdate, Exam
 from app.schemas.question import QuestionCreate, QuestionUpdate, Question
 from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
+from app.utils.cache import cached, delete, get, set
+from app.core.cache_constants import CACHE_TTL, CACHE_KEYS
 from app.core.constants import CourseLevelEnum, StudentExamStatusEnum, QuestionTypeEnum
 
 
@@ -203,6 +205,8 @@ class ExamService:
 
         new_question = crud_question.create(db, obj_in=question_in)
         db.flush()
+        delete(CACHE_KEYS["exam_questions"].format(question_in.exam_id))
+        delete(CACHE_KEYS["exam_results"].format(question_in.exam_id))
         return new_question
 
     def create_questions(self, db: Session, questions_in: List[QuestionCreate], current_user_context: UserContext) -> List[Question]:
@@ -221,6 +225,8 @@ class ExamService:
 
         new_questions = crud_question.create_multi(db, objs_in=questions_in)
         db.flush()
+        delete(CACHE_KEYS["exam_questions"].format(exam_id))
+        delete(CACHE_KEYS["exam_results"].format(exam_id))
         return new_questions
 
     def get_question(self, db: Session, question_id: int, current_user_context: UserContext,
@@ -264,6 +270,8 @@ class ExamService:
                 )
 
         updated_question = crud_question.update(db, db_obj=question, obj_in=question_in)
+        delete(CACHE_KEYS["exam_questions"].format(question.exam_id))
+        delete(CACHE_KEYS["exam_results"].format(question.exam_id))
         return updated_question
 
     def delete_question(self, db: Session, question_id: int, current_user_context: UserContext) -> Question:
@@ -278,6 +286,8 @@ class ExamService:
         self._require_exam_management_permission(db, current_user_context, exam=exam)
 
         deleted_question = crud_question.delete(db, id=question_id)
+        delete(CACHE_KEYS["exam_questions"].format(exam.id))
+        delete(CACHE_KEYS["exam_results"].format(exam.id))
         return deleted_question
 
     def get_exam_questions(self, db: Session, exam_id: int, current_user_context: UserContext,
@@ -285,16 +295,34 @@ class ExamService:
         exam = crud_exam.get(db, id=exam_id)
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
-
         self._require_exam_view_permission(db, current_user_context, exam)
-
+        cache_key = CACHE_KEYS["exam_questions"].format(exam_id)
+        cached_list = get(cache_key)
+        if cached_list is not None:
+            from app.schemas.question import Question as QuestionSchema
+            if not include_correct_answers and permission_helper.is_student(current_user_context):
+                sanitized = []
+                for q in cached_list:
+                    qc = dict(q)
+                    qc["correct_answer"] = None
+                    sanitized.append(QuestionSchema.model_validate(qc))
+                return sanitized
+            return [QuestionSchema.model_validate(q) for q in cached_list]
         questions = crud_question.get_by_exam(db, exam_id=exam_id)
-
-        if not include_correct_answers and permission_helper.is_student(current_user_context):
-            for question in questions:
-                question.correct_answer = None
-
-        return questions
+        base = []
+        for question in questions:
+            base.append({
+                "id": question.id,
+                "text": question.text,
+                "options": question.options,
+                "correct_answer": None if (not include_correct_answers and permission_helper.is_student(current_user_context)) else question.correct_answer,
+                "exam_id": question.exam_id,
+                "question_type": question.question_type,
+                "points": question.points
+            })
+        set(cache_key, base, CACHE_TTL["exam_questions"])
+        from app.schemas.question import Question as QuestionSchema
+        return [QuestionSchema.model_validate(q) for q in base]
 
 
 exam_service = ExamService()

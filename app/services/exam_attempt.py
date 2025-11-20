@@ -20,6 +20,10 @@ from app.utils.permission import PermissionHelper as permission_helper
 from app.utils.events import event_bus
 from app.crud.course_enrollment import course_enrollment as enrollment_crud
 from app.services.reward_rating import reward_rating_service
+from app.services.course_progress import course_progress_service
+from app.utils.cache import delete
+from app.core.cache_constants import CACHE_KEYS
+
 
 
 class ExamAttemptService:
@@ -285,6 +289,14 @@ class ExamAttemptService:
                 "school_id": exam.course.school_id if exam.course else None
             })
 
+            try:
+                enrollment = enrollment_crud.get_by_user_and_course(db, user_id=current_user_context.user.id, course_id=exam.course_id)
+                if enrollment and enrollment.status == EnrollmentStatusEnum.COMPLETED:
+                    course_progress_service._update_course_progress(db, enrollment)
+            except Exception as e:
+                print(f"Warning: Failed to check rewards for course {exam.course_id}, user {current_user_context.user.id}: {e}")
+
+        delete(CACHE_KEYS["exam_results"].format(exam.id))
         return result
 
     def get_exam_attempt(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:

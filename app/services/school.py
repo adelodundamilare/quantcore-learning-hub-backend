@@ -128,7 +128,13 @@ class SchoolService:
         if not school:
             raise HTTPException(status_code=404, detail="School not found")
 
-        return crud_school.update(db=db, db_obj=school, obj_in=school_in)
+        updated = crud_school.update(db=db, db_obj=school, obj_in=school_in)
+        from app.utils.cache import delete
+        delete(f"school:details:{school_id}")
+        delete(f"school:students:{school_id}:0:100")
+        delete(f"school:teachers:{school_id}:0:100")
+        delete(f"courses:school:{school_id}:0:100")
+        return updated
 
     def delete_school_admin(self, db: Session, school_id: int) -> School:
         """Soft delete a school by super admin."""
@@ -145,6 +151,12 @@ class SchoolService:
 
         crud_school.bulk_soft_delete_related_entities(db, school_id)
 
-        return crud_school.delete(db=db, id=school_id)
+        result = crud_school.delete(db=db, id=school_id)
+        from app.utils.cache import delete
+        delete(f"school:details:{school_id}")
+        delete(f"school:students:{school_id}:0:100")
+        delete(f"school:teachers:{school_id}:0:100")
+        delete(f"courses:school:{school_id}:0:100")
+        return result
 
 school_service = SchoolService()

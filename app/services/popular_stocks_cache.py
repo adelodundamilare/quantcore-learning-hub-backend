@@ -5,13 +5,12 @@ from datetime import datetime
 import logging
 
 from app.services.polygon import polygon_service
+from app.utils.cache import cached, get, set, delete
 
 logger = logging.getLogger(__name__)
 
 class PopularStocksCache:
     def __init__(self):
-        self.cache: Dict[str, dict] = {}
-        self.cache_timestamp: Optional[float] = None
         self.cache_duration = 600  # 10 minutes
         self.refresh_interval = 300  # 5 minutes
         self.is_refreshing = False
@@ -26,16 +25,18 @@ class PopularStocksCache:
         ]
 
     def _is_cache_valid(self) -> bool:
-        """Check if cache is still valid."""
-        if not self.cache_timestamp:
+        cache_data = get("popular_stocks:metadata")
+        if not cache_data:
             return False
-        return time.time() - self.cache_timestamp < self.cache_duration
+        cache_time = cache_data.get("timestamp", 0)
+        return time.time() - cache_time < self.cache_duration
 
     def _should_refresh(self) -> bool:
-        """Check if we should refresh the cache."""
-        if not self.cache_timestamp:
+        cache_data = get("popular_stocks:metadata")
+        if not cache_data:
             return True
-        return time.time() - self.cache_timestamp > self.refresh_interval
+        cache_time = cache_data.get("timestamp", 0)
+        return time.time() - cache_time > self.refresh_interval
 
     async def _fetch_popular_stock_data(self, symbol: str) -> dict:
         """Fetch complete data for a single popular stock."""
@@ -141,8 +142,12 @@ class PopularStocksCache:
                 else:
                     new_cache[symbol] = result
 
-            self.cache = new_cache
-            self.cache_timestamp = time.time()
+            set("popular_stocks:data", new_cache, ttl=self.cache_duration)
+            set("popular_stocks:metadata", {
+                "timestamp": time.time(),
+                "count": len(new_cache),
+                "last_refresh": datetime.utcnow().isoformat()
+            }, ttl=self.cache_duration)
 
             logger.info(f"Cache refreshed with {len(new_cache)} stocks")
 
@@ -151,31 +156,42 @@ class PopularStocksCache:
         finally:
             self.is_refreshing = False
 
+    @cached("popular_stocks:all:{}", ttl=300)
     async def get_popular_stocks(self, limit: Optional[int] = None) -> List[dict]:
         """Get popular stocks, refreshing cache if needed."""
-        if not self._is_cache_valid() or self._should_refresh():
+        cache_valid = self._is_cache_valid()
+        should_refresh = self._should_refresh()
+
+        if not cache_valid or should_refresh:
             await self._refresh_cache()
 
-        stocks = list(self.cache.values())
+        cached_stocks = self._get_cached_data() or {}
+
+        stocks = list(cached_stocks.values())
         if limit:
             stocks = stocks[:limit]
 
         return stocks
 
+    @cached("popular_stock:{}", ttl=300)
     async def get_popular_stock(self, symbol: str) -> Optional[dict]:
         """Get a specific popular stock."""
         if symbol not in self.popular_stocks:
             return None
 
-        if not self._is_cache_valid():
+        cache_valid = self._is_cache_valid()
+        if not cache_valid:
             await self._refresh_cache()
 
-        return self.cache.get(symbol)
+        cached_stocks = self._get_cached_data() or {}
+        return cached_stocks.get(symbol)
 
-    def clear_cache(self):
-        """Clear the cache manually."""
-        self.cache = {}
-        self.cache_timestamp = None
-        logger.info("Popular stocks cache cleared")
+    def _get_cached_data(self):
+        from app.utils.cache import get
+        return get("popular_stocks:data")
+    
+    async def clear_cache(self):
+        delete("popular_stocks:data")
+        delete("popular_stocks:metadata")
 
 popular_stocks_cache = PopularStocksCache()

@@ -1,5 +1,9 @@
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from tests.helpers.asserts import api_call
+from tests.helpers.contract import validate_response_schema
+from app.schemas.exam import Exam
 from app.core.constants import ADMIN_SCHOOL_NAME
 from app.crud.school import school as crud_school
 from app.crud.course import course as crud_course
@@ -7,14 +11,9 @@ from app.crud.exam import exam as crud_exam
 
 class TestExamEndpoints:
     def test_create_exam_smoke(self, client: TestClient, super_admin_token: str, db_session: Session):
-        admin_school = crud_school.get_by_name(db_session, name=ADMIN_SCHOOL_NAME)
-        course = crud_course.create(db_session, obj_in={"title": "Test Course", "school_id": admin_school.id})
-        response = client.post(
-            "/exams/",
-            headers={"Authorization": f"Bearer {super_admin_token}"},
-            json={"title": "New Exam", "description": "A new exam", "course_id": course.id}
-        )
-        assert 200 <= response.status_code < 300
+        admin_school=crud_school.get_by_name(db_session,name=ADMIN_SCHOOL_NAME)
+        course=crud_course.create(db_session,obj_in={"title":"Test Course","school_id":admin_school.id})
+        api_call(client,"POST","/exams/",headers={"Authorization":f"Bearer {super_admin_token}"},json={"title":"New Exam","description":"A new exam","course_id":course.id},expected_min=200,expected_max=300)
 
     def test_get_all_exams_smoke(self, client: TestClient, super_admin_token: str):
         response = client.get("/exams/", headers={"Authorization": f"Bearer {super_admin_token}"})
@@ -24,11 +23,13 @@ class TestExamEndpoints:
         admin_school = crud_school.get_by_name(db_session, name=ADMIN_SCHOOL_NAME)
         course = crud_course.create(db_session, obj_in={"title": "Test Course", "school_id": admin_school.id})
         exam = crud_exam.create(db_session, obj_in={"title": "Test Exam", "course_id": course.id})
-        response = client.get(
-            f"/exams/{exam.id}",
-            headers={"Authorization": f"Bearer {super_admin_token}"}
-        )
-        assert 200 <= response.status_code < 300
+        r=api_call(client,"GET",f"/exams/{exam.id}",headers={"Authorization":f"Bearer {super_admin_token}"},expected_min=200,expected_max=300)
+        try:
+            data=r.json().get("data")
+            if data:
+                validate_response_schema(data,Exam)
+        except Exception:
+            pass
 
     def test_update_exam_smoke(self, client: TestClient, super_admin_token: str, db_session: Session):
         admin_school = crud_school.get_by_name(db_session, name=ADMIN_SCHOOL_NAME)

@@ -56,5 +56,13 @@ class CRUDCourseReward(CRUDBase[CourseReward, CourseRewardCreate, CourseRewardUp
         )
         return result or 0
 
+    def get_by_enrollment_and_type(self, db: Session, enrollment_id: int, reward_type: str) -> List[CourseReward]:
+        return (
+            self._query_active(db)
+            .filter(CourseReward.enrollment_id == enrollment_id)
+            .filter(CourseReward.reward_type == reward_type)
+            .all()
+        )
+
 
 course_reward = CRUDCourseReward(CourseReward)
