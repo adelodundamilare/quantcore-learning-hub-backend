@@ -148,10 +148,35 @@ def create_trading_router():
 
     @router.get("/account/balance", response_model=APIResponse[AccountBalanceSchema])
     async def get_account_balance(
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context)
     ):
-        balance = await trading_service.get_account_balance(db, user_id=context.user.id)
+        from_dt: Optional[datetime] = None
+        to_dt: Optional[datetime] = None
+
+        if from_date:
+            try:
+                from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid from_date format. Use YYYY-MM-DD"
+                )
+
+        if to_date:
+            try:
+                to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid to_date format. Use YYYY-MM-DD"
+                )
+
+        balance = await trading_service.get_account_balance(
+            db, user_id=context.user.id, from_date=from_dt, to_date=to_dt
+        )
         return APIResponse(
             message="Account balance retrieved successfully",
             data=balance

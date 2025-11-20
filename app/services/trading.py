@@ -356,7 +356,9 @@ class TradingService:
     async def get_account_balance(
         self,
         db: Session,
-        user_id: int
+        user_id: int,
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None
     ) -> AccountBalanceSchema:
         account = crud_account_balance.get_by_user_id(db, user_id=user_id)
 
@@ -387,6 +389,23 @@ class TradingService:
 
         total_amount = available_balance + amount_invested
 
+        period_pnl = None
+        period_start_value = None
+        period_end_value = None
+        period_start_date = from_date
+        period_end_date = to_date
+
+        if from_date and to_date:
+            try:
+                period_pnl_data = await self._calculate_period_portfolio_pnl(
+                    db, user_id, from_date, to_date
+                )
+                period_pnl = period_pnl_data.get('period_pnl')
+                period_start_value = period_pnl_data.get('start_value')
+                period_end_value = period_pnl_data.get('end_value')
+            except Exception as e:
+                logger.error(f"Error calculating period P&L for user {user_id}: {e}")
+
         return AccountBalanceSchema(
             id=account.id,
             user_id=user_id,
@@ -394,6 +413,11 @@ class TradingService:
             available_balance=float(available_balance),
             amount_invested=float(amount_invested),
             total_amount=float(total_amount),
+            period_pnl=period_pnl,
+            period_start_value=period_start_value,
+            period_end_value=period_end_value,
+            period_start_date=period_start_date,
+            period_end_date=period_end_date,
             created_at=account.created_at,
             updated_at=account.updated_at
         )
@@ -911,6 +935,97 @@ class TradingService:
         except Exception as e:
             logger.error(f"Error fetching historical price for {symbol}: {e}")
             return 0.0
+
+    async def _calculate_period_portfolio_pnl(
+        self,
+        db: Session,
+        user_id: int,
+        from_date: datetime,
+        to_date: datetime
+    ) -> dict:
+        """Calculate portfolio P&L between two dates (trading performance only, excludes cash flows)"""
+        all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
+
+        if not all_trades:
+            return {"period_pnl": 0.0, "start_value": 0.0, "end_value": 0.0}
+
+        if from_date >= to_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="from_date must be before to_date"
+            )
+
+        start_date = from_date.date()
+        end_date = to_date.date()
+
+        start_holdings = self._calculate_holdings_at_date(all_trades, start_date)
+        start_value = await self._calculate_portfolio_value_at_date(start_holdings, start_date)
+
+        end_holdings = self._calculate_holdings_at_date(all_trades, end_date)
+        end_value = await self._calculate_portfolio_value_at_date(end_holdings, end_date)
+
+        period_pnl = float(end_value - start_value)
+
+        return {
+            "period_pnl": period_pnl,
+            "start_value": float(start_value),
+            "end_value": float(end_value)
+        }
+
+    def _calculate_holdings_at_date(
+        self,
+        all_trades: list,
+        target_date: datetime.date
+    ) -> dict:
+        """Calculate what holdings the user had at a specific date"""
+        holdings = defaultdict(Decimal)
+
+        # Get all trades up to and including target date
+        relevant_trades = [
+            t for t in all_trades
+            if t.executed_at.date() <= target_date and t.status == OrderStatusEnum.FILLED
+        ]
+        relevant_trades.sort(key=lambda x: x.executed_at)
+
+        # Replay trades to calculate holdings
+        for trade in relevant_trades:
+            qty = Decimal(str(trade.quantity))
+            if trade.order_type == OrderTypeEnum.BUY:
+                holdings[trade.symbol] += qty
+            elif trade.order_type == OrderTypeEnum.SELL:
+                holdings[trade.symbol] -= qty
+                if holdings[trade.symbol] <= 0:
+                    holdings.pop(trade.symbol, None)
+
+        return dict(holdings)
+
+    async def _calculate_portfolio_value_at_date(
+        self,
+        holdings: dict,
+        target_date: datetime
+    ) -> Decimal:
+        """Calculate total portfolio value for given holdings on a specific date"""
+        if not holdings:
+            return Decimal("0.00")
+
+        symbols = list(holdings.keys())
+        price_tasks = [
+            self._get_historical_price(symbol, target_date)
+            for symbol in symbols
+        ]
+        prices = await asyncio.gather(*price_tasks, return_exceptions=True)
+
+        total_value = Decimal("0.00")
+        for symbol, price in zip(symbols, prices):
+            if isinstance(price, Exception):
+                logger.warning(f"Could not get price for {symbol} on {target_date}, using 0")
+                price = Decimal("0.00")
+            else:
+                price = Decimal(str(price))
+
+            total_value += holdings[symbol] * price
+
+        return total_value
 
     async def get_trading_account_summary(
         self,

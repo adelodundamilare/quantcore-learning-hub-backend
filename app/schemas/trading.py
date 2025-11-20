@@ -106,6 +106,11 @@ class AccountBalanceSchema(BaseModel):
     available_balance: Optional[float] = None
     amount_invested: Optional[float] = None
     total_amount: Optional[float] = None
+    period_pnl: Optional[float] = None
+    period_start_value: Optional[float] = None
+    period_end_value: Optional[float] = None
+    period_start_date: Optional[datetime] = None
+    period_end_date: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
