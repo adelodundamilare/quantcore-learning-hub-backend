@@ -60,12 +60,12 @@ def delete_curriculum(
 
 
 @router.post("/lessons/", response_model=APIResponse[Lesson])
-def create_lesson(
+async def create_lesson(
     lesson_in: LessonCreate,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    new_lesson = lesson_service.create_lesson(db, lesson_in=lesson_in, current_user_context=context)
+    new_lesson = await lesson_service.create_lesson(db, lesson_in=lesson_in, current_user_context=context)
     return APIResponse(message="Lesson created successfully", data=Lesson.model_validate(new_lesson))
 
 @router.get("/curriculums/{curriculum_id}/lessons/", response_model=APIResponse[List[Lesson]])
@@ -87,20 +87,20 @@ def get_lesson(
     return APIResponse(message="Lesson retrieved successfully", data=Lesson.model_validate(lesson))
 
 @router.put("/lessons/{lesson_id}", response_model=APIResponse[Lesson])
-def update_lesson(
+async def update_lesson(
     lesson_id: int,
     lesson_in: LessonUpdate,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_lesson = lesson_service.update_lesson(db, lesson_id=lesson_id, lesson_in=lesson_in, current_user_context=context)
+    updated_lesson = await lesson_service.update_lesson(db, lesson_id=lesson_id, lesson_in=lesson_in, current_user_context=context)
     return APIResponse(message="Lesson updated successfully", data=Lesson.model_validate(updated_lesson))
 
 @router.delete("/lessons/{lesson_id}", response_model=APIResponse)
-def delete_lesson(
+async def delete_lesson(
     lesson_id: int,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    response = lesson_service.delete_lesson(db, lesson_id=lesson_id, current_user_context=context)
+    response = await lesson_service.delete_lesson(db, lesson_id=lesson_id, current_user_context=context)
     return APIResponse(message=response["message"])
