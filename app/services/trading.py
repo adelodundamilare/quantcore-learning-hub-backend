@@ -372,6 +372,11 @@ class TradingService:
 
         positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)
 
+        for pos in positions:
+            cost_basis = Decimal(str(pos.quantity)) * Decimal(str(pos.average_price))
+            amount_invested += cost_basis
+
+        portfolio_value = Decimal("0.00")
         if positions:
             symbols = [p.symbol for p in positions]
             price_tasks = [polygon_service.get_latest_quote(s) for s in symbols]
@@ -379,11 +384,11 @@ class TradingService:
 
             for pos, quote_result in zip(positions, price_results):
                 if isinstance(quote_result, Exception) or not quote_result or not quote_result.get('price'):
-                    logger.warning(f"Could not fetch price for {pos.symbol}. Skipping from invested amount calculation.")
+                    logger.warning(f"Could not fetch price for {pos.symbol}. Skipping from portfolio value calculation.")
                     continue
 
                 current_price = Decimal(str(quote_result['price']))
-                amount_invested += Decimal(str(pos.quantity)) * current_price
+                portfolio_value += Decimal(str(pos.quantity)) * current_price
 
         total_amount = available_balance + amount_invested
 
@@ -940,7 +945,7 @@ class TradingService:
         from_date: datetime,
         to_date: datetime
     ) -> dict:
-        """Calculate portfolio P&L between two dates (trading performance only, excludes cash flows)"""
+        """Calculate portfolio P&L between two dates, adjusted for cash flows during the period"""
         all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
 
         if not all_trades:
@@ -961,7 +966,15 @@ class TradingService:
         end_holdings = self._calculate_holdings_at_date(all_trades, end_date)
         end_value = await self._calculate_portfolio_value_at_date(end_holdings, end_date)
 
-        period_pnl = float(end_value - start_value)
+        cash_flows = crud_transaction.get_multi_by_user_in_date_range(
+            db, user_id=user_id, from_date=from_date, to_date=to_date
+        )
+        total_cash_inflows = sum(Decimal(str(t.amount)) for t in cash_flows if Decimal(str(t.amount)) > 0)
+        total_cash_outflows = sum(abs(Decimal(str(t.amount))) for t in cash_flows if Decimal(str(t.amount)) < 0)
+
+        net_cash_flow = total_cash_inflows - total_cash_outflows
+
+        period_pnl = float(end_value - start_value - net_cash_flow)
 
         return {
             "period_pnl": period_pnl,

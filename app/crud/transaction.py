@@ -14,4 +14,17 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionSchema
             .all()
         )
 
+    def get_multi_by_user_in_date_range(
+        self, db: Session, *, user_id: int, from_date, to_date
+    ) -> List[Transaction]:
+        return (
+            db.query(self.model)
+            .filter(
+                self.model.user_id == user_id,
+                self.model.created_at >= from_date,
+                self.model.created_at <= to_date
+            )
+            .all()
+        )
+
 transaction = CRUDTransaction(Transaction)
