@@ -151,6 +151,28 @@ def _ensure_school_admin_role_exists(db_session):
         print(f"School admin role already exists: {role.name}")
     return role
 
+@pytest.fixture(scope="function")
+def _ensure_teacher_role_exists(db_session):
+    role = crud_role.get_by_name(db_session, name=RoleEnum.TEACHER)
+    if not role:
+        role = crud_role.create(db_session, obj_in={"name": RoleEnum.TEACHER.value})
+        db_session.commit()
+        print(f"Created teacher role: {role.name}")
+    else:
+        print(f"Teacher role already exists: {role.name}")
+    return role
+
+@pytest.fixture(scope="function")
+def _ensure_student_role_exists(db_session):
+    role = crud_role.get_by_name(db_session, name=RoleEnum.STUDENT)
+    if not role:
+        role = crud_role.create(db_session, obj_in={"name": RoleEnum.STUDENT.value})
+        db_session.commit()
+        print(f"Created student role: {role.name}")
+    else:
+        print(f"Student role already exists: {role.name}")
+    return role
+
 
 @pytest.fixture
 def user_factory(db_session):

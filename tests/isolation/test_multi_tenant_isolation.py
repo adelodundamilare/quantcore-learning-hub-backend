@@ -17,7 +17,7 @@ def login(client: TestClient, email: str, password: str = "testpass123") -> str:
 
 def _create_school_b(client: TestClient, super_admin_token: str) -> int:
     email=f"admin-{uuid.uuid4().hex}@test.com"
-    r=client.post("/schools",headers={"Authorization":f"Bearer {super_admin_token}"},json={"school_name":f"SCH-{uuid.uuid4().hex[:6]}","admin_email":email,"admin_full_name":"Admin B"})
+    r=client.post("/schools",headers={"Authorization":f"Bearer {super_admin_token}"},json={"school_name":f"SCH-{uuid.uuid4().hex[:6]}","email":email,"full_name":"Admin B"})
     if 200<=r.status_code<500:
         data=r.json().get("data") or {}
         return data.get("id") or r.json().get("id")
@@ -40,7 +40,7 @@ def _create_curriculum_and_lesson(client: TestClient, token: str, course_id: int
     return cur_id, les_id
 
 
-@pytest.mark.parametrize("creator_role", ["super_admin","school_admin"]) 
+@pytest.mark.parametrize("creator_role", ["super_admin","school_admin"])
 def test_student_isolation_between_schools(client: TestClient, token_for_role, super_admin_token: str, db_session: Session, user_factory, creator_role, _ensure_student_role_exists):
     admin_school=crud_school.get_by_name(db_session,name=ADMIN_SCHOOL_NAME)
     school_b_id=_create_school_b(client,super_admin_token)

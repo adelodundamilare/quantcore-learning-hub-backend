@@ -156,7 +156,6 @@ class PopularStocksCache:
         finally:
             self.is_refreshing = False
 
-    @cached("popular_stocks:all:{}", ttl=300)
     async def get_popular_stocks(self, limit: Optional[int] = None) -> List[dict]:
         """Get popular stocks, refreshing cache if needed."""
         cache_valid = self._is_cache_valid()
@@ -173,7 +172,6 @@ class PopularStocksCache:
 
         return stocks
 
-    @cached("popular_stock:{}", ttl=300)
     async def get_popular_stock(self, symbol: str) -> Optional[dict]:
         """Get a specific popular stock."""
         if symbol not in self.popular_stocks:
@@ -189,7 +187,7 @@ class PopularStocksCache:
     def _get_cached_data(self):
         from app.utils.cache import get
         return get("popular_stocks:data")
-    
+
     async def clear_cache(self):
         delete("popular_stocks:data")
         delete("popular_stocks:metadata")

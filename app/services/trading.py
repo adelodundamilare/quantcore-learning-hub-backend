@@ -95,7 +95,6 @@ class TradingService:
         new_watchlist = crud_user_watchlist.create(db, obj_in=watchlist_data)
         return UserWatchlistSchema.model_validate(new_watchlist)
 
-    @cached("watchlists:user:{}:{}:{}", ttl=180)  # 3 minutes cache
     async def get_user_watchlists(
         self,
         db: Session,
@@ -352,7 +351,6 @@ class TradingService:
             watchlist.__dict__ | {"stocks": stocks_with_sparkline}
         )
 
-    @cached("balance:user:{}", ttl=60)
     async def get_account_balance(
         self,
         db: Session,
@@ -510,7 +508,6 @@ class TradingService:
 
         return AccountBalanceSchema.model_validate(account)
 
-    @cached("portfolio:user:{}:{}:{}", ttl=120)  # 2 minutes cache
     async def get_portfolio(
         self,
         db: Session,
