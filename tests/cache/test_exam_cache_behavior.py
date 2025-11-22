@@ -1,14 +1,16 @@
 import pytest
 from sqlalchemy.orm import Session
 from app.services.exam import exam_service
-from app.core.cache_constants import CACHE_KEYS
-from app.utils.cache import delete
+from app.core.cache_config import CACHE_KEYS
+from app.core.cache import cache
+import asyncio
 
 class FakeExam:
     def __init__(self,id):
         self.id=id
 
-def test_exam_questions_cache_cycle(db_session: Session, monkeypatch):
+@pytest.mark.asyncio
+async def test_exam_questions_cache_cycle(db_session: Session, monkeypatch):
     called={"q":0}
     def get_exam(db,id):
         return FakeExam(id)
@@ -25,6 +27,6 @@ def test_exam_questions_cache_cycle(db_session: Session, monkeypatch):
     exam_service.get_exam_questions(db_session,1,ctx,True)
     exam_service.get_exam_questions(db_session,1,ctx,True)
     assert called["q"]==1
-    delete(CACHE_KEYS["exam_questions"].format(1))
+    await cache.delete(CACHE_KEYS["exam_questions"].format(1))
     exam_service.get_exam_questions(db_session,1,ctx,True)
     assert called["q"]==2

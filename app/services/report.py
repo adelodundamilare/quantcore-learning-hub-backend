@@ -20,7 +20,7 @@ from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.services.exam import exam_service
 from app.services.trading import trading_service
 from app.utils.cache import get, set
-from app.core.cache_constants import CACHE_KEYS, CACHE_TTL
+from app.core.cache_config import CACHE_KEYS, CACHE_TTL
 from app.services.stripe import stripe_service
 from app.schemas.report import StudentExamStats
 from app.crud.report import trading_leaderboard_snapshot, leaderboard_snapshot

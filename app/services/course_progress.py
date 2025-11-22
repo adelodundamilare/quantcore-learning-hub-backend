@@ -1,6 +1,6 @@
 from datetime import datetime
 from app.utils.cache import get, set, delete
-from app.core.cache_constants import CACHE_KEYS, CACHE_TTL
+from app.core.cache_config import CACHE_KEYS, CACHE_TTL
 from typing import List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status

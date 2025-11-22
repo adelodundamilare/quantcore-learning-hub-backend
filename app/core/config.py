@@ -59,6 +59,7 @@ class Settings(BaseSettings):
 
     # Cache
     CACHE_TTL: int = 300
+    CACHE_ENABLED: bool = False
     REDIS_URL: Optional[str] = None
     TEST_DATABASE_URL: Optional[str] = None
 

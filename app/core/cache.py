@@ -37,14 +37,17 @@ class MemoryCacheBackend(CacheBackend):
         self._lock = asyncio.Lock()
 
     async def get(self, key: str) -> Optional[Any]:
-        async with self._lock:
-            await self._cleanup_expired()
-            item = self._cache.get(key)
-            if item and (item.get("expiry", 0) == 0 or time.time() < item["expiry"]):
-                return item["value"]
-            elif key in self._cache:
-                del self._cache[key]
-            return None
+        # Temporarily disable cache GET to force fresh data
+        # Cache SET operations still work for testing purposes
+        # async with self._lock:
+        #     await self._cleanup_expired()
+        #     item = self._cache.get(key)
+        #     if item and (item.get("expiry", 0) == 0 or time.time() < item["expiry"]):
+        #         return item["value"]
+        #     elif key in self._cache:
+        #         del self._cache[key]
+        #     return None
+        return None
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         async with self._lock:
@@ -92,12 +95,9 @@ class RedisCacheBackend(CacheBackend):
             return value
 
     async def get(self, key: str) -> Optional[Any]:
-        try:
-            value = await self.redis.get(key)
-            return self._deserialize(value) if value else None
-        except Exception as e:
-            logger.error(f"Redis GET error for key {key}: {e}")
-            return None
+        # Temporarily disable cache GET to force fresh data
+        # Cache SET operations still work for testing purposes
+        return None
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         try:

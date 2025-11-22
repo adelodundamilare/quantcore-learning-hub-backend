@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -19,6 +20,7 @@ from app.services.notification import notification_service
 from app.crud.one_time_token import one_time_token as crud_one_time_token
 from app.models.one_time_token import TokenType
 import random
+from app.core.cache import cache
 
 class SchoolService:
 
@@ -129,11 +131,12 @@ class SchoolService:
             raise HTTPException(status_code=404, detail="School not found")
 
         updated = crud_school.update(db=db, db_obj=school, obj_in=school_in)
-        from app.utils.cache import delete
-        delete(f"school:details:{school_id}")
-        delete(f"school:students:{school_id}:0:100")
-        delete(f"school:teachers:{school_id}:0:100")
-        delete(f"courses:school:{school_id}:0:100")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(cache.delete(f"school:details:{school_id}"))
+        loop.run_until_complete(cache.delete(f"school:students:{school_id}:0:100"))
+        loop.run_until_complete(cache.delete(f"school:teachers:{school_id}:0:100"))
+        loop.run_until_complete(cache.delete(f"courses:school:{school_id}:0:100"))
         return updated
 
     def delete_school_admin(self, db: Session, school_id: int) -> School:
@@ -152,11 +155,12 @@ class SchoolService:
         crud_school.bulk_soft_delete_related_entities(db, school_id)
 
         result = crud_school.delete(db=db, id=school_id)
-        from app.utils.cache import delete
-        delete(f"school:details:{school_id}")
-        delete(f"school:students:{school_id}:0:100")
-        delete(f"school:teachers:{school_id}:0:100")
-        delete(f"courses:school:{school_id}:0:100")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(cache.delete(f"school:details:{school_id}"))
+        loop.run_until_complete(cache.delete(f"school:students:{school_id}:0:100"))
+        loop.run_until_complete(cache.delete(f"school:teachers:{school_id}:0:100"))
+        loop.run_until_complete(cache.delete(f"courses:school:{school_id}:0:100"))
         return result
 
 school_service = SchoolService()

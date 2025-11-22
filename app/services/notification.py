@@ -3,7 +3,7 @@ from typing import List
 from app.crud.notification import notification as crud_notification
 from app.schemas.notification import NotificationCreate, NotificationUpdate, Notification
 from app.utils.cache import cached, delete
-from app.core.cache_constants import CACHE_TTL, CACHE_KEYS
+from app.core.cache_config import CACHE_TTL, CACHE_KEYS
 
 class NotificationService:
     def create_notification(self, db: Session, *, user_id: int, message: str, link: str | None = None, notification_type: str | None = None) -> Notification:

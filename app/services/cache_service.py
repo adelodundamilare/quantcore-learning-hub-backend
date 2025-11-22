@@ -4,84 +4,51 @@ from datetime import datetime
 import logging
 
 from app.core.cache import cache
+from app.core.cache_config import INVALIDATION_PATTERNS
 
 logger = logging.getLogger(__name__)
 
 class CacheService:
-    """Centralized cache management service"""
+
+    @staticmethod
+    async def _invalidate_patterns(patterns: list):
+        for pattern in patterns:
+            deleted = await cache.delete_pattern(pattern)
+            logger.info(f"Invalidated {deleted} cache entries for pattern {pattern}")
 
     @staticmethod
     async def invalidate_user_cache(user_id: int):
-        """Invalidate all cache entries for a specific user"""
-        patterns = [
-            f"user:*:{user_id}",
-            f"trading:*:{user_id}",
-            f"notifications:*:{user_id}",
-            f"course:enrollments:{user_id}*"
-        ]
-
-        for pattern in patterns:
-            deleted = await cache.delete_pattern(pattern)
-            logger.info(f"Invalidated {deleted} cache entries for user {user_id} with pattern {pattern}")
+        patterns = [pattern.format(user_id) for pattern in INVALIDATION_PATTERNS["user_update"]]
+        await CacheService._invalidate_patterns(patterns)
 
     @staticmethod
     async def invalidate_course_cache(course_id: int, school_id: Optional[int] = None):
-        """Invalidate course-related cache"""
-        patterns = [
-            f"course:*:{course_id}",
-            f"course:details:{course_id}"
-        ]
-
+        patterns = [pattern.format(course_id) for pattern in INVALIDATION_PATTERNS["course_update"]]
         if school_id:
-            patterns.append(f"course:list:{school_id}")
-            patterns.append(f"school:*:{school_id}")
-
-        for pattern in patterns:
-            deleted = await cache.delete_pattern(pattern)
-            logger.info(f"Invalidated {deleted} cache entries for course {course_id}")
+            patterns.extend([pattern.format(school_id) for pattern in INVALIDATION_PATTERNS["school_update"] if "courses:school" in pattern])
+        await CacheService._invalidate_patterns(patterns)
 
     @staticmethod
     async def invalidate_school_cache(school_id: int):
-        """Invalidate school-related cache"""
-        patterns = [
-            f"school:*:{school_id}",
-            f"course:list:{school_id}",
-            f"leaderboard:school:{school_id}*"
-        ]
-
-        for pattern in patterns:
-            deleted = await cache.delete_pattern(pattern)
-            logger.info(f"Invalidated {deleted} cache entries for school {school_id}")
+        patterns = [pattern.format(school_id) for pattern in INVALIDATION_PATTERNS["school_update"]]
+        await CacheService._invalidate_patterns(patterns)
 
     @staticmethod
     async def invalidate_trading_cache(user_id: int):
-        """Invalidate trading-related cache for user"""
-        patterns = [
-            f"trading:*:{user_id}",
-            f"leaderboard:*"  # Global leaderboards might be affected
-        ]
-
-        for pattern in patterns:
-            deleted = await cache.delete_pattern(pattern)
-            logger.info(f"Invalidated trading cache for user {user_id}")
+        patterns = [pattern.format(user_id) for pattern in INVALIDATION_PATTERNS["trade_execution"]]
+        await CacheService._invalidate_patterns(patterns)
 
     @staticmethod
     async def invalidate_stock_cache(symbol: Optional[str] = None):
-        """Invalidate stock data cache"""
         if symbol:
-            patterns = [f"stock:*:{symbol}", f"stock:price:{symbol}"]
+            patterns = [pattern.format(symbol) for pattern in INVALIDATION_PATTERNS["stock_update"]]
         else:
-            patterns = ["stock:*", "trading:popular*"]
-
-        for pattern in patterns:
-            deleted = await cache.delete_pattern(pattern)
-            logger.info(f"Invalidated stock cache for {symbol or 'all stocks'}")
+            patterns = INVALIDATION_PATTERNS["stock_update"]
+        await CacheService._invalidate_patterns(patterns)
 
     @staticmethod
     async def warm_cache_for_user(user_id: int):
-        """Pre-warm critical cache entries for a user"""
         try:
-            # Import here to avoid circular imports
             from app.crud.user import user as user_crud
             from app.core.database import SessionLocal
 
@@ -100,7 +67,6 @@ class CacheService:
 
     @staticmethod
     async def get_cache_stats() -> Dict[str, Any]:
-        """Get cache statistics and health info"""
         try:
             stats = {
                 "backend": "Redis" if hasattr(cache.backend, 'redis') else "Memory",
@@ -126,7 +92,7 @@ class CacheService:
                 cache_size = len(cache.backend._cache)
                 stats.update({
                     "memory_cache_size": cache_size,
-                    "cache_entries": list(cache.backend._cache.keys())[:10]  # First 10 keys
+                    "cache_entries": list(cache.backend._cache.keys())[:10]
                 })
 
             return stats
@@ -136,7 +102,6 @@ class CacheService:
 
     @staticmethod
     async def health_check() -> bool:
-        """Check if cache is healthy"""
         try:
             test_key = "health_check_test"
             test_value = {"timestamp": datetime.utcnow().isoformat()}

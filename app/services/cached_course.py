@@ -10,15 +10,13 @@ from app.crud.user import user as user_crud
 logger = logging.getLogger(__name__)
 
 class CachedCourseService:
-    """Course service with intelligent caching"""
-    
+
     @cache_course_data(ttl=600)
     async def get_course_details(self, db: Session, course_id: int) -> Optional[Dict[str, Any]]:
-        """Get course details with 10-minute cache"""
         course = course_crud.get(db, id=course_id)
         if not course:
             return None
-        
+
         return {
             "id": course.id,
             "title": course.title,
@@ -28,10 +26,9 @@ class CachedCourseService:
             "created_at": course.created_at.isoformat() if course.created_at else None,
             "updated_at": course.updated_at.isoformat() if course.updated_at else None
         }
-    
+
     @cache_course_data(ttl=300)
     async def get_courses_by_school(self, db: Session, school_id: int) -> List[Dict[str, Any]]:
-        """Get courses by school with 5-minute cache"""
         courses = course_crud.get_by_school(db, school_id=school_id)
         return [
             {
@@ -43,32 +40,27 @@ class CachedCourseService:
             }
             for course in courses
         ]
-    
+
     @cache_user_data(ttl=300)
     async def get_user_courses(self, db: Session, user_id: int) -> List[Dict[str, Any]]:
-        """Get user enrolled courses with 5-minute cache"""
-        # Get user enrollments through CRUD
         enrollments = db.query(course_crud.model)\
             .join(course_crud.model.enrollments)\
             .filter(course_crud.model.enrollments.any(user_id=user_id))\
             .all()
-        
+
         return [
             {
                 "id": course.id,
                 "title": course.title,
                 "description": course.description,
                 "level": course.level,
-                "progress": 0  # Calculate actual progress if needed
+                "progress": 0
             }
             for course in enrollments
         ]
-    
+
     @cache_course_data(ttl=120)
     async def get_course_progress(self, db: Session, user_id: int, course_id: int) -> Dict[str, Any]:
-        """Get course progress with 2-minute cache"""
-        # Get actual progress from database
-        # This would depend on your lesson_progress implementation
         return {
             "course_id": course_id,
             "user_id": user_id,
@@ -77,15 +69,13 @@ class CachedCourseService:
             "progress_percentage": 0.0,
             "last_accessed": None
         }
-    
+
     async def create_course(self, db: Session, course_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create course and invalidate relevant cache"""
         try:
             course = course_crud.create(db, obj_in=course_data)
-            
-            # Invalidate school courses cache
+
             await cache_service.invalidate_course_cache(course.id, course.school_id)
-            
+
             return {
                 "id": course.id,
                 "title": course.title,
@@ -95,19 +85,17 @@ class CachedCourseService:
         except Exception as e:
             logger.error(f"Course creation failed: {e}")
             raise
-    
+
     async def update_course(self, db: Session, course_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update course and invalidate cache"""
         try:
             course = course_crud.get(db, id=course_id)
             if not course:
                 raise ValueError(f"Course {course_id} not found")
-            
+
             updated_course = course_crud.update(db, db_obj=course, obj_in=update_data)
-            
-            # Invalidate course cache
+
             await cache_service.invalidate_course_cache(course_id, updated_course.school_id)
-            
+
             return {
                 "id": updated_course.id,
                 "title": updated_course.title,
@@ -116,17 +104,12 @@ class CachedCourseService:
         except Exception as e:
             logger.error(f"Course update failed: {e}")
             raise
-    
+
     async def enroll_user(self, db: Session, user_id: int, course_id: int) -> Dict[str, Any]:
-        """Enroll user in course and invalidate cache"""
         try:
-            # Create enrollment (depends on your enrollment implementation)
-            # enrollment = enrollment_crud.create(db, obj_in={"user_id": user_id, "course_id": course_id})
-            
-            # Invalidate user course cache
             await cache_service.invalidate_user_cache(user_id)
             await cache_service.invalidate_course_cache(course_id)
-            
+
             return {"message": "Enrollment successful"}
         except Exception as e:
             logger.error(f"Course enrollment failed: {e}")

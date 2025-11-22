@@ -1,47 +1,49 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from fastapi import HTTPException, status
-from typing import List, Dict, Optional
+import asyncio
+import logging
+from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
-from collections import defaultdict
-import logging
-import asyncio
+from typing import Dict, List, Optional
 
+from fastapi import HTTPException, status
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from app.core.cache import cache
+from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
+from app.crud.trading import (
+    account_balance as crud_account_balance,
+    portfolio_position as crud_portfolio_position,
+    trade_order as crud_trade_order,
+    user_watchlist as crud_user_watchlist,
+    watchlist_stock as crud_watchlist_stock,
+)
+from app.crud.transaction import transaction as crud_transaction
 from app.crud.user import user as user_crud
 from app.crud.role import role as user_role
 from app.schemas.trading import (
-    PortfolioItemSchema,
-    TradingAccountSummary,
-    WatchlistStockSchema,
-    UserWatchlistCreate,
-    UserWatchlistUpdate,
-    UserWatchlistSchema,
     AccountBalanceSchema,
-    PortfolioPositionSchema,
-    TradeOrderCreate,
-    TradeOrder,
-    PortfolioHistoricalDataPointSchema,
+    OrderPreview,
     OrderPreviewRequest,
-    OrderPreview
+    PortfolioHistoricalDataPointSchema,
+    PortfolioItemSchema,
+    PortfolioPositionSchema,
+    TradeOrder,
+    TradeOrderCreate,
+    TradingAccountSummary,
+    UserWatchlistCreate,
+    UserWatchlistSchema,
+    UserWatchlistUpdate,
+    WatchlistStockSchema,
 )
-from app.crud.trading import (
-    user_watchlist as crud_user_watchlist,
-    watchlist_stock as crud_watchlist_stock,
-    account_balance as crud_account_balance,
-    portfolio_position as crud_portfolio_position,
-    trade_order as crud_trade_order
-)
-from app.crud.transaction import transaction as crud_transaction
 from app.schemas.user import UserContext
-from app.services.polygon import polygon_service
+from app.services.cache_service import cache_service
 from app.services.logo import logo_service
-from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
-from app.utils.permission import PermissionHelper as permission_helper
-from app.utils.cache import get, set, delete, cached
+from app.services.polygon import polygon_service
+from app.utils.cache import cached
 from app.utils.events import event_bus
-import asyncio
+from app.utils.permission import PermissionHelper as permission_helper
 
 logger = logging.getLogger(__name__)
 
@@ -508,8 +510,7 @@ class TradingService:
             }
         )
 
-        delete(f"trading_summary_{student_id}")
-        delete(f"balance:user:{student_id}")
+        await cache_service.invalidate_trading_cache(student_id)
 
         return AccountBalanceSchema.model_validate(account)
 
@@ -645,10 +646,7 @@ class TradingService:
 
         new_trade = crud_trade_order.create(db, obj_in=trade_data)
 
-        delete(f"trading_summary_{user_id}")
-        delete(f"balance:user:{user_id}")
-        delete(f"portfolio:user:{user_id}:0:100")
-        delete(f"trades:user:{user_id}:0:100")
+        await cache_service.invalidate_trading_cache(user_id)
 
         await event_bus.publish("trade_executed", {
             "student_id": user_id,
@@ -1043,7 +1041,7 @@ class TradingService:
         user_id: int
     ) -> TradingAccountSummary:
         cache_key = f"trading_summary_{user_id}"
-        cached = get(cache_key)
+        cached = await cache.get(cache_key)
         if cached:
             return cached
 
@@ -1091,7 +1089,7 @@ class TradingService:
             trading_loss=float(trading_loss)
         )
 
-        set(cache_key, result, 300)
+        await cache.set(cache_key, result, 300)
         return result
 
 trading_service = TradingService()

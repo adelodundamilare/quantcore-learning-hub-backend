@@ -5,6 +5,7 @@ from typing import Optional, Callable, List
 import logging
 
 from app.core.cache import cache
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def cache_result(
 
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            if skip_cache:
+            if skip_cache or not settings.CACHE_ENABLED:
                 return await func(*args, **kwargs)
 
             if serialize_args:
@@ -47,7 +48,7 @@ def cache_result(
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            if skip_cache:
+            if skip_cache or not settings.CACHE_ENABLED:
                 return func(*args, **kwargs)
 
             loop = None
@@ -85,6 +86,9 @@ def cache_result(
 
 def invalidate_cache(*patterns: str):
     async def invalidate():
+        if not settings.CACHE_ENABLED:
+            logger.debug("Cache disabled, skipping invalidation")
+            return
         for pattern in patterns:
             deleted_count = await cache.delete_pattern(pattern)
             logger.info(f"Invalidated {deleted_count} cache entries matching pattern: {pattern}")
@@ -113,7 +117,6 @@ def cache_notifications(ttl: int = 120):
     return cache_result("notifications", ttl=ttl)
 
 def cache_sync_safe(key_prefix: str, ttl: Optional[int] = None):
-    """Cache decorator that works with both sync and async functions safely"""
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):

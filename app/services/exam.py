@@ -12,7 +12,7 @@ from app.schemas.question import QuestionCreate, QuestionUpdate, Question
 from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
 from app.utils.cache import cached, delete, get, set
-from app.core.cache_constants import CACHE_TTL, CACHE_KEYS
+from app.core.cache_config import CACHE_TTL, CACHE_KEYS
 from app.core.constants import CourseLevelEnum, StudentExamStatusEnum, QuestionTypeEnum
 
 

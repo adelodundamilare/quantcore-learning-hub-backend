@@ -21,8 +21,8 @@ from app.utils.events import event_bus
 from app.crud.course_enrollment import course_enrollment as enrollment_crud
 from app.services.reward_rating import reward_rating_service
 from app.services.course_progress import course_progress_service
-from app.utils.cache import delete
-from app.core.cache_constants import CACHE_KEYS
+from app.core.cache import cache
+from app.core.cache_config import CACHE_KEYS
 
 
 
@@ -296,7 +296,7 @@ class ExamAttemptService:
             except Exception as e:
                 print(f"Warning: Failed to check rewards for course {exam.course_id}, user {current_user_context.user.id}: {e}")
 
-        delete(CACHE_KEYS["exam_results"].format(exam.id))
+        await cache.delete(CACHE_KEYS["exam_results"].format(exam.id))
         return result
 
     def get_exam_attempt(self, db: Session, attempt_id: int, current_user_context: UserContext) -> ExamAttemptDetails:
