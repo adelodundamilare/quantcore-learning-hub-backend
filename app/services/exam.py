@@ -313,7 +313,7 @@ class ExamService:
         for question in questions:
             base.append({
                 "id": question.id,
-                "text": question.text,
+                "text": question.question_text,
                 "options": question.options,
                 "correct_answer": None if (not include_correct_answers and permission_helper.is_student(current_user_context)) else question.correct_answer,
                 "exam_id": question.exam_id,
