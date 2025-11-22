@@ -13,6 +13,7 @@ from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
 from app.utils.cache import cached, delete, get, set
 from app.core.cache_config import CACHE_TTL, CACHE_KEYS
+from app.schemas.question import Question as QuestionSchema
 from app.core.constants import CourseLevelEnum, StudentExamStatusEnum, QuestionTypeEnum
 
 
@@ -298,30 +299,41 @@ class ExamService:
         self._require_exam_view_permission(db, current_user_context, exam)
         cache_key = CACHE_KEYS["exam_questions"].format(exam_id)
         cached_list = get(cache_key)
-        if cached_list is not None:
-            from app.schemas.question import Question as QuestionSchema
-            if not include_correct_answers and permission_helper.is_student(current_user_context):
-                sanitized = []
-                for q in cached_list:
-                    qc = dict(q)
-                    qc["correct_answer"] = None
-                    sanitized.append(QuestionSchema.model_validate(qc))
-                return sanitized
-            return [QuestionSchema.model_validate(q) for q in cached_list]
+        # if cached_list is not None:
+        #     from app.schemas.question import Question as QuestionSchema
+        #     if not include_correct_answers and permission_helper.is_student(current_user_context):
+        #         sanitized = []
+        #         for q in cached_list:
+        #             qc = dict(q)
+        #             qc["correct_answer"] = None
+        #             if "question_text" not in qc and "text" in qc:
+        #                 qc["question_text"] = qc.pop("text")
+        #             sanitized.append(QuestionSchema.model_validate(qc))
+        #         return sanitized
+        #     else:
+        #         updated_list = []
+        #         for q in cached_list:
+        #             qc = dict(q)
+        #             if "question_text" not in qc and "text" in qc:
+        #                 qc["question_text"] = qc.pop("text")
+        #             updated_list.append(qc)
+        #         return [QuestionSchema.model_validate(q) for q in updated_list]
         questions = crud_question.get_by_exam(db, exam_id=exam_id)
         base = []
         for question in questions:
             base.append({
                 "id": question.id,
-                "text": question.question_text,
+                "question_text": question.question_text,
                 "options": question.options,
                 "correct_answer": None if (not include_correct_answers and permission_helper.is_student(current_user_context)) else question.correct_answer,
                 "exam_id": question.exam_id,
                 "question_type": question.question_type,
-                "points": question.points
+                "points": question.points,
+                "created_at": question.created_at,
+                "updated_at": question.updated_at
             })
-        set(cache_key, base, CACHE_TTL["exam_questions"])
-        from app.schemas.question import Question as QuestionSchema
+        # set(cache_key, base, CACHE_TTL["exam_questions"])
+        # from app.schemas.question import Question as QuestionSchema
         return [QuestionSchema.model_validate(q) for q in base]
 
 
