@@ -234,7 +234,7 @@ async def update_school_admin(
     db: Session = Depends(deps.get_transactional_db)
 ):
     """Update school details by super admin."""
-    updated_school = school_service.update_school_admin(db=db, school_id=school_id, school_in=school_in)
+    updated_school = await school_service.update_school_admin(db=db, school_id=school_id, school_in=school_in)
     await cache.clear()
     return APIResponse(message="School updated successfully", data=School.model_validate(updated_school))
 

@@ -220,7 +220,9 @@ class CacheManager:
     
     async def invalidate_trading(self, user_id: int) -> int:
         count = 0
-        for pattern in ["portfolio", "balance", "watchlist", "trades"]:
+        for pattern in ["get_portfolio", "get_portfolio_history", "get_portfolio_position_by_id", 
+                       "get_watchlist", "get_orders", "preview_order", "get_account_balance",
+                       "get_trading_stats", "get_top_traders", "portfolio", "balance", "watchlist", "trades"]:
             count += await self.delete_pattern(f"user:{user_id}:{pattern}:*")
         return count
 

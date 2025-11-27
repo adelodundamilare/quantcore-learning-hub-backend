@@ -31,7 +31,7 @@ class CourseProgressService:
 
     def _has_passed_course_exam(self, db: Session, enrollment) -> bool:
         """Check if student has passed the final exam for this course."""
-        exams = crud_exam.get_by_course_id(db, course_id=enrollment.course_id)
+        exams = crud_exam.get_exams_by_course(db, course_id=enrollment.course_id)
 
         if not exams:
             return False

@@ -14,7 +14,6 @@ from app.models.exam_attempt import ExamAttempt
 from app.models.course_reward import CourseReward
 from app.models.user_school_association import UserSchoolAssociation
 
-
 from app.schemas.user import UserCreate, UserUpdate
 
 class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
@@ -371,7 +370,6 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
 
     def get_student_school_associations(self, db: Session, student_id: int) -> List[Any]:
         """Get all school associations for a student."""
-        from app.models.user import user_school_association
         student_role = db.query(Role).filter(Role.name == "student").first()
         if not student_role:
             return []

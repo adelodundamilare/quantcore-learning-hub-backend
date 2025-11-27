@@ -37,7 +37,7 @@ def test_student_lesson_progress_endpoint(client: TestClient, token_for_role: ca
     student_token = token_for_role("student")
     headers = {"Authorization": f"Bearer {student_token}"}
 
-    response = client.get("/reports/student/lesson-progress", headers=headers)
+    response = client.get("/student/lesson-progress", headers=headers)
     assert 200 <= response.status_code < 300
 
     if response.status_code == 200:

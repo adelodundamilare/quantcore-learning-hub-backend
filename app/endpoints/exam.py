@@ -159,7 +159,7 @@ async def delete_question(
     return APIResponse(message="Question deleted successfully", data=Question.model_validate(deleted_question))
 
 # Exam Attempt Endpoints
-@router.post("/exams/{exam_id}/attempts", response_model=APIResponse[ExamAttempt], status_code=status.HTTP_201_CREATED)
+@router.post("/{exam_id}/attempts", response_model=APIResponse[ExamAttempt], status_code=status.HTTP_201_CREATED)
 async def start_exam_attempt(
     *,
     db: Session = Depends(deps.get_transactional_db),
@@ -244,7 +244,7 @@ async def get_user_exam_attempts(
     return APIResponse(message="User exam attempts retrieved successfully", data=[ExamAttempt.model_validate(a) for a in attempts])
 
 
-@router.get("/exams/{exam_id}/attempts", response_model=APIResponse[List[ExamAttempt]])
+@router.get("/{exam_id}/attempts", response_model=APIResponse[List[ExamAttempt]])
 @cache_endpoint(ttl=600)
 async def get_exam_attempts(
     *,

@@ -6,10 +6,9 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 2  # 8 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 2
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
@@ -19,7 +18,6 @@ class Settings(BaseSettings):
         "http://localhost:5500"
     ]
 
-    # Database Configuration
     DATABASE_HOST: str
     DATABASE_PORT: str
     DATABASE_USER: str
@@ -37,27 +35,30 @@ class Settings(BaseSettings):
             f'@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}'
         )
 
-    # Email
     SENDGRID_API_KEY: str
     EMAILS_FROM_EMAIL: str
     EMAILS_FROM_NAME: str
 
-    CLOUDINARY_CLOUD_NAME: str
-    CLOUDINARY_API_KEY: str
-    CLOUDINARY_API_SECRET: str
+    AWS_REGION: str = "us-west-2"
+    S3_BUCKET_NAME: str
+
+    MAX_FILE_SIZE: str = "2GB"
+    MAX_VIDEO_SIZE: str = "5GB"
+    ALLOWED_VIDEO_FORMATS: str = "mp4,mov,avi,mkv,wmv,flv,webm"
+    UPLOAD_TIMEOUT: int = 3600
+    MAX_SINGLE_UPLOAD_SIZE: str = "100MB"
+    CHUNK_SIZE: str = "10MB"
 
     POLYGON_API_KEY: str
     STRIPE_SECRET_KEY: str
     STRIPE_WEBHOOK_SECRET: str
     STRIPE_PORTAL_RETURN_URL: str = "http://localhost:3000/billing/return"
 
-    # OAuth2
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     APPLE_CLIENT_ID: Optional[str] = None
     APPLE_CLIENT_SECRET: Optional[str] = None
 
-    # Cache
     CACHE_TTL: int = 300
     CACHE_ENABLED: bool = True
     REDIS_URL: Optional[str] = None

@@ -7,10 +7,8 @@ from functools import wraps
 from typing import Dict, List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.cache import cache
 from app.core.constants import OrderTypeEnum, OrderStatusEnum, RoleEnum
 from app.crud.trading import (
     account_balance as crud_account_balance,
@@ -938,8 +936,13 @@ class TradingService:
     ) -> dict:
         """Calculate portfolio P&L between two dates, adjusted for cash flows during the period"""
         all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
+        
+        account = crud_account_balance.get_by_user_id(db, user_id=user_id)
+        all_fund_transactions = crud_transaction.get_multi_by_user_and_type(
+            db, user_id=user_id, transaction_type="fund_addition"
+        )
 
-        if not all_trades:
+        if not all_trades and not all_fund_transactions:
             return {"period_pnl": 0.0, "start_value": 0.0, "end_value": 0.0}
 
         if from_date >= to_date:
@@ -984,17 +987,16 @@ class TradingService:
         all_trades: list,
         target_date: datetime.date
     ) -> Decimal:
-        """Calculate cash balance at a specific date by replaying transactions"""
+        """Calculate cash balance at a specific date by replaying fund additions and trades"""
         cash_balance = Decimal("0.00")
 
-        # Add all fund additions up to target date
         fund_additions = crud_transaction.get_multi_by_user_and_type_up_to_date(
             db, user_id=user_id, transaction_type="fund_addition", up_to_date=target_date
         )
+        
         for transaction in fund_additions:
             cash_balance += Decimal(str(transaction.amount))
 
-        # Adjust for trades up to target date
         relevant_trades = [
             t for t in all_trades
             if t.executed_at.date() <= target_date and t.status == OrderStatusEnum.FILLED
@@ -1017,14 +1019,12 @@ class TradingService:
         """Calculate what holdings the user had at a specific date"""
         holdings = defaultdict(Decimal)
 
-        # Get all trades up to and including target date
         relevant_trades = [
             t for t in all_trades
             if t.executed_at.date() <= target_date and t.status == OrderStatusEnum.FILLED
         ]
         relevant_trades.sort(key=lambda x: x.executed_at)
 
-        # Replay trades to calculate holdings
         for trade in relevant_trades:
             qty = Decimal(str(trade.quantity))
             if trade.order_type == OrderTypeEnum.BUY:
@@ -1069,11 +1069,6 @@ class TradingService:
         db: Session,
         user_id: int
     ) -> TradingAccountSummary:
-        cache_key = f"trading_summary_{user_id}"
-        cached = await cache.get(cache_key)
-        if cached:
-            return cached
-
         fund_additions = crud_transaction.get_multi_by_user_and_type(
             db, user_id=user_id, transaction_type="fund_addition"
         )
@@ -1118,7 +1113,6 @@ class TradingService:
             trading_loss=float(trading_loss)
         )
 
-        await cache.set(cache_key, result, 300)
         return result
 
 trading_service = TradingService()

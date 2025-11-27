@@ -393,7 +393,7 @@ def create_trading_router():
             user_id=context.user.id,
             order_in=order_in
         )
-        await cache.invalidate_user_cache(context.user.id)
+        await cache.invalidate_trading(context.user.id)
         return APIResponse(
             message="Buy order placed successfully",
             data=new_order
@@ -415,7 +415,7 @@ def create_trading_router():
             user_id=context.user.id,
             order_in=order_in
         )
-        await cache.invalidate_user_cache(context.user.id)
+        await cache.invalidate_trading(context.user.id)
         return APIResponse(
             message="Sell order placed successfully",
             data=new_order
@@ -437,7 +437,7 @@ def create_trading_router():
         skip: int = 0,
         limit: int = 100
     ):
-        history = trading_service.get_trade_history(
+        history = await trading_service.get_trade_history(
             db,
             user_id=context.user.id,
             skip=skip,
