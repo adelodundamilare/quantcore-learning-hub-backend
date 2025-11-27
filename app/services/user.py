@@ -1,15 +1,17 @@
-from typing import List, Dict, Any
-from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+import io
+import re
 import secrets
 import string
 import uuid
-import pandas as pd
+from typing import Dict, List
 from datetime import datetime
-import io
+import pandas as pd
 from sqlalchemy import exc
-from app.core.constants import ADMIN_SCHOOL_NAME
-from app.core.constants import RoleEnum
+from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
+
+from app.core.constants import ADMIN_SCHOOL_NAME, RoleEnum
+from app.core.security import get_password_hash, verify_password
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
@@ -24,14 +26,12 @@ from app.schemas.user import (
 )
 from app.models.user import User
 from app.models.school import School
-from app.core.security import get_password_hash, verify_password
 from app.services.email import EmailService
-from app.utils.permission import PermissionHelper as permission_helper
 from app.services.notification import notification_service
 from app.services.course import course_service
 from app.services.trading import trading_service
 from app.utils.logger import setup_logger
-import re
+from app.utils.permission import PermissionHelper as permission_helper
 
 logger = setup_logger("user_service", "user_service.log")
 
@@ -79,7 +79,6 @@ class UserService:
     async def invite_user(
         self, db: Session, *, invite_in: UserInvite, current_user_context: UserContext
     ) -> UserSchema:
-        """Invites a user to a school as a teacher/student or as a platform admin/member."""
         inviting_role = current_user_context.role.name
         invited_role = invite_in.role_name
         is_platform_invite = invited_role in [RoleEnum.ADMIN, RoleEnum.MEMBER]
@@ -161,7 +160,7 @@ class UserService:
                     try:
                         course_service.enroll_student(db, course_id=course_id, user_id=existing_user.id, current_user_context=current_user_context)
                     except HTTPException as e:
-                        print(f"Warning: Could not enroll existing user {existing_user.id} in course {course_id}: {e.detail}")
+                        pass
 
             school_name = "platform" if is_platform_invite else target_school.name
             role_display = f"platform {role_to_assign.name}" if is_platform_invite else role_to_assign.name
@@ -188,7 +187,7 @@ class UserService:
                 "full_name": invite_in.full_name,
                 "email": invite_in.email,
                 "hashed_password": hashed_password,
-                "is_active": True # User doesn't need verification
+                "is_active": True
             }
 
             try:
@@ -207,7 +206,7 @@ class UserService:
                     try:
                         course_service.enroll_student(db, course_id=course_id, user_id=new_user.id, current_user_context=current_user_context)
                     except HTTPException as e:
-                        print(f"Warning: Could not enroll new user {new_user.id} in course {course_id}: {e.detail}")
+                        pass
 
             school_name = "platform" if is_platform_invite else target_school.name
             role_display = f"platform {role_to_assign.name}" if is_platform_invite else role_to_assign.name
@@ -283,7 +282,7 @@ class UserService:
         )
         return new_user
 
-    def update_teacher_details(self, db: Session, school_id: int, teacher_id: int, update_data: TeacherUpdate, current_user_context: UserContext) -> UserSchema:
+    async def update_teacher_details(self, db: Session, school_id: int, teacher_id: int, update_data: TeacherUpdate, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
         teacher_role = crud_role.get_by_name(db, name=RoleEnum.TEACHER)
@@ -301,8 +300,7 @@ class UserService:
         updated_teacher = crud_user.get(db, id=teacher_id)
         return updated_teacher
 
-    def remove_user_from_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> dict:
-        """Remove a user from a school (soft delete)."""
+    async def remove_user_from_school(self, db: Session, school_id: int, user_id: int, current_user_context: UserContext) -> dict:
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
         if current_user_context.user.id == user_id:
@@ -353,8 +351,7 @@ class UserService:
 
         return {"message": "User removed from school successfully"}
 
-    def update_user_role(self, db: Session, school_id: int, user_id: int, update_data, current_user_context: UserContext) -> UserSchema:
-        """Update a user's role within a school."""
+    async def update_user_role(self, db: Session, school_id: int, user_id: int, update_data, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
         association_result = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
@@ -403,8 +400,7 @@ class UserService:
         updated_user = crud_user.get(db, id=user_id)
         return updated_user
 
-    def update_user_status(self, db: Session, school_id: int, user_id: int, update_data, current_user_context: UserContext) -> UserSchema:
-        """Update a user's active status within a school."""
+    async def update_user_status(self, db: Session, school_id: int, user_id: int, update_data, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
         user = crud_user.get(db, id=user_id)
@@ -449,8 +445,7 @@ class UserService:
 
         return user
 
-    def update_user_details_admin(self, db: Session, school_id: int, user_id: int, update_data: dict, current_user_context: UserContext) -> UserSchema:
-        """Update user details administratively within a school context."""
+    async def update_user_details_admin(self, db: Session, school_id: int, user_id: int, update_data: dict, current_user_context: UserContext) -> UserSchema:
         permission_helper.require_school_management_permission(current_user_context, school_id)
 
         association_result = crud_user.get_association_by_user_and_school(db, user_id=user_id, school_id=school_id)
@@ -478,13 +473,11 @@ class UserService:
                     detail="Email already in use by another user."
                 )
 
-        # Get old values for logging
         old_email = user.email
         old_full_name = user.full_name
 
         updated_user = crud_user.update(db, db_obj=user, obj_in=update_data)
 
-        # Audit logging
         changes = []
         if update_data.get('email') and update_data['email'] != old_email:
             changes.append(f"email: {old_email} -> {update_data['email']}")
@@ -775,8 +768,7 @@ class UserService:
 
         return self._bulk_invite_tasks[task_id]
 
-    def delete_user_by_admin(self, db: Session, user_id: int) -> UserSchema:
-        """Delete a user by admin (soft delete)."""
+    async def delete_user_by_admin(self, db: Session, user_id: int) -> UserSchema:
         user = crud_user.get(db, id=user_id)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -830,7 +822,7 @@ class UserService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         return UserSchema.model_validate(user)
 
-    def update_user_for_super_admin(self, db: Session, user_id: int, update_data: SuperAdminUserUpdate) -> UserSchema:
+    async def update_user_for_super_admin(self, db: Session, user_id: int, update_data: SuperAdminUserUpdate) -> UserSchema:
         user = crud_user.get(db, id=user_id)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

@@ -10,22 +10,13 @@ from app.crud.user import user as crud_user
 from app.crud.school import school as crud_school
 from app.crud.course import course as crud_course
 from app.crud.course_enrollment import course_enrollment as crud_enrollment
-from app.services.notification import notification_service
-from app.utils.permission import PermissionHelper as permission_helper
-from app.utils.cache import get, set, delete, clear, cached
 from app.schemas.course_enrollment import CourseEnrollmentCreate
 from app.models.course_enrollment import EnrollmentStatusEnum
+from app.services.notification import notification_service
+from app.utils.permission import PermissionHelper as permission_helper
 
 
 class CourseService:
-
-    def _clear_course_caches(self, course_id: int = None, school_id: int = None, user_id: int = None):
-        """Clear course-related caches to ensure stale data isn't served"""
-        try:
-            if course_id:
-                delete(f"course_{course_id}_user_{user_id}")
-        except:
-            pass
 
     def create_course(self, db: Session, course_in: CourseCreate, current_user_context: UserContext) -> CourseSchema:
         permission_helper.require_not_student(current_user_context, "Students cannot create courses.")
@@ -52,9 +43,6 @@ class CourseService:
 
         db.flush()
 
-        delete(f"user_courses_{current_user_context.user.id}")
-        delete(f"courses_all_user_{current_user_context.user.id}_skip_0_limit_100")
-
         notification_service.create_notification(
             db,
             user_id=current_user_context.user.id,
@@ -65,7 +53,7 @@ class CourseService:
 
         return CourseSchema.model_validate(new_course)
 
-    def update_course(self, db: Session, course_id: int, course_in: CourseUpdate, current_user_context: UserContext) -> CourseSchema:
+    async def update_course(self, db: Session, course_id: int, course_in: CourseUpdate, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -75,18 +63,19 @@ class CourseService:
         updated_course = crud_course.update(db, db_obj=course, obj_in=course_in)
         return CourseSchema.model_validate(updated_course)
 
-    def delete_course(self, db: Session, course_id: int, current_user_context: UserContext) -> CourseSchema:
+    async def delete_course(self, db: Session, course_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
 
         permission_helper.require_course_management_permission(current_user_context, course)
 
+        school_id = course.school_id
         crud_course.bulk_soft_delete_related_entities(db, course_id)
         deleted_course = crud_course.delete(db, id=course_id)
         return CourseSchema.model_validate(deleted_course)
 
-    def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
+    async def assign_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -104,8 +93,6 @@ class CourseService:
 
         crud_course.add_teacher_to_course(db, course=course, user=teacher_user)
 
-        delete(f"teacher_courses_admin_{user_id}")
-
         notification_service.create_notification(
             db,
             user_id=teacher_user.id,
@@ -116,7 +103,7 @@ class CourseService:
 
         return CourseSchema.model_validate(course)
 
-    def remove_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
+    async def remove_teacher(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -132,8 +119,6 @@ class CourseService:
 
         crud_course.remove_teacher_from_course(db, course=course, user=teacher_user)
 
-        delete(f"teacher_courses_admin_{user_id}")
-
         notification_service.create_notification(
             db,
             user_id=teacher_user.id,
@@ -144,7 +129,7 @@ class CourseService:
 
         return CourseSchema.model_validate(course)
 
-    def enroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
+    async def enroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -170,8 +155,6 @@ class CourseService:
         )
         crud_enrollment.create(db, obj_in=enrollment_in)
 
-        delete(f"user_courses_{user_id}")
-
         notification_service.create_notification(
             db,
             user_id=student_user.id,
@@ -182,7 +165,7 @@ class CourseService:
 
         return CourseSchema.model_validate(course)
 
-    def unenroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
+    async def unenroll_student(self, db: Session, course_id: int, user_id: int, current_user_context: UserContext) -> CourseSchema:
         course = crud_course.get(db, id=course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -201,8 +184,6 @@ class CourseService:
         enrollment = crud_enrollment.get_by_user_and_course(db, user_id=user_id, course_id=course_id)
         if enrollment:
             crud_enrollment.delete(db, id=enrollment.id)
-
-        delete(f"user_courses_{user_id}")
 
         notification_service.create_notification(
             db,
@@ -267,11 +248,6 @@ class CourseService:
         return enriched_courses
 
     def get_course(self, db: Session, course_id: int, current_user_context: UserContext) -> CourseSchema:
-        cache_key = f"course_{course_id}_user_{current_user_context.user.id}"
-        cached = get(cache_key)
-        if cached:
-            return cached
-
         course_model = crud_course.get(db, id=course_id)
         if not course_model:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found.")
@@ -279,7 +255,6 @@ class CourseService:
         permission_helper.require_course_view_permission(current_user_context, course_model)
 
         result = self._enrich_course_with_progress(db, course_model, current_user_context.user.id)
-        set(cache_key, result)
         return result
 
     def get_course_teachers(self, db: Session, course_id: int, current_user_context: UserContext) -> List[User]:
@@ -299,11 +274,6 @@ class CourseService:
         return course.students
 
     def get_all_courses(self, db: Session, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[CourseSchema]:
-        cache_key = f"courses_all_user_{current_user_context.user.id}_skip_{skip}_limit_{limit}"
-        cached = get(cache_key)
-        if cached:
-            return cached
-
         if permission_helper.is_super_admin(current_user_context):
             courses = crud_course.get_multi(db, skip=skip, limit=limit)
         elif current_user_context.school:
@@ -313,21 +283,14 @@ class CourseService:
 
         course_ids = [course.id for course in courses]
         enriched_courses = self._batch_enrich_courses_with_progress(db, course_ids, current_user_context.user.id)
-        set(cache_key, enriched_courses)
         return enriched_courses
 
     def get_user_courses(self, db: Session, current_user_context: UserContext) -> List[CourseSchema]:
-        cache_key = f"user_courses_{current_user_context.user.id}"
-        cached = get(cache_key)
-        if cached:
-            return cached
-
         courses = crud_course.get_courses_by_user_id(db, user_id=current_user_context.user.id)
         enriched_courses = []
         for course_model in courses:
             enriched_courses.append(self._enrich_course_with_progress(db, course_model, current_user_context.user.id))
 
-        set(cache_key, enriched_courses, 600)
         return enriched_courses
 
     def get_courses_by_school_id(self, db: Session, school_id: int, current_user_context: UserContext, skip: int = 0, limit: int = 100) -> List[CourseSchema]:
@@ -351,7 +314,7 @@ class CourseService:
 
         return enriched_courses
 
-    def update_student_courses_bulk(self, db: Session, student_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
+    async def update_student_courses_bulk(self, db: Session, student_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
         permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
         permission_helper.validate_user_role_in_school(db, student_id, current_user_context.school.id, RoleEnum.STUDENT)
 
@@ -396,11 +359,6 @@ class CourseService:
         }
 
     def get_teacher_courses_admin(self, db: Session, teacher_id: int, current_user_context: UserContext) -> List[CourseSchema]:
-        cache_key = f"teacher_courses_admin_{teacher_id}"
-        cached = get(cache_key)
-        if cached:
-            return cached
-
         teacher_user = crud_user.get(db, id=teacher_id)
         if not teacher_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found.")
@@ -409,10 +367,9 @@ class CourseService:
         courses = crud_course.get_teacher_courses(db, user_id=teacher_id)
 
         result = [CourseSchema.model_validate(course) for course in courses]
-        set(cache_key, result, 600)
         return result
 
-    def update_teacher_courses_bulk(self, db: Session, teacher_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
+    async def update_teacher_courses_bulk(self, db: Session, teacher_id: int, course_ids: List[int], current_user_context: UserContext) -> dict:
         permission_helper.require_school_management_permission(current_user_context, current_user_context.school.id)
 
         permission_helper.validate_user_role_in_school(db, teacher_id, current_user_context.school.id, RoleEnum.TEACHER)

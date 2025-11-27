@@ -19,8 +19,7 @@ from app.crud.exam import exam as crud_exam
 from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.services.exam import exam_service
 from app.services.trading import trading_service
-from app.utils.cache import get, set
-from app.core.cache_config import CACHE_KEYS, CACHE_TTL
+
 from app.services.stripe import stripe_service
 from app.schemas.report import StudentExamStats
 from app.crud.report import trading_leaderboard_snapshot, leaderboard_snapshot
@@ -83,10 +82,6 @@ class ReportService:
     ) -> LeaderboardResponseSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
-        cache_key = CACHE_KEYS["school_leaderboard"].format(school_id, skip, limit)
-        cached_data = get(cache_key)
-        if cached_data is not None:
-            return LeaderboardResponseSchema(**cached_data)
         snapshots = leaderboard_snapshot.get_all_snapshots_for_school(db, school_id=school_id, skip=skip, limit=limit)
         total_snapshots = leaderboard_snapshot.count_snapshots_for_school(db, school_id=school_id)
 
@@ -107,7 +102,6 @@ class ReportService:
             "skip": skip,
             "limit": limit
         }
-        set(cache_key, data, CACHE_TTL["school_leaderboard"])
         return LeaderboardResponseSchema(**data)
 
     async def precompute_leaderboard(self, db: Session, school_id: int):
@@ -185,10 +179,6 @@ class ReportService:
     ) -> TradingLeaderboardResponseSchema:
         permission_helper.require_school_view_permission(current_user_context, school_id)
 
-        cache_key = CACHE_KEYS["trading_leaderboard"].format(school_id, skip, limit)
-        cached_data = get(cache_key)
-        if cached_data is not None:
-            return TradingLeaderboardResponseSchema(**cached_data)
         snapshots = trading_leaderboard_snapshot.get_all_snapshots_for_school(db, school_id=school_id, skip=skip, limit=limit)
         total_snapshots = trading_leaderboard_snapshot.count_snapshots_for_school(db, school_id=school_id)
 
@@ -209,7 +199,6 @@ class ReportService:
             "skip": skip,
             "limit": limit
         }
-        set(cache_key, data, CACHE_TTL["trading_leaderboard"])
         return TradingLeaderboardResponseSchema(**data)
 
     def get_school_dashboard_stats(self, db: Session, school_id: int, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> SchoolReportSchema:
@@ -248,24 +237,18 @@ class ReportService:
             total_revenue=total_revenue
         )
 
-    def get_admin_dashboard_stats(self, db: Session, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> AdminDashboardReportSchema:
+    def get_admin_dashboard_stats(self, db: Session, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> AdminDashboardStatsSchema:
         if not permission_helper.is_super_admin(current_user_context):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Super Admin can access this report.")
 
-        cache_key = CACHE_KEYS["admin_dashboard_stats"]
-        cached_data = get(cache_key)
-        if cached_data is not None:
-            return AdminDashboardStatsSchema(**cached_data)
         total_courses_count = crud_course.get_all_courses_count(db, start_date=start_date, end_date=end_date)
         total_students_count = crud_user.get_all_students_count(db, start_date=start_date, end_date=end_date)
         total_teachers_count = crud_user.get_all_teachers_count(db, start_date=start_date, end_date=end_date)
-        data = {
-            "total_courses": total_courses_count,
-            "total_students": total_students_count,
-            "total_teachers": total_teachers_count
-        }
-        set(cache_key, data, CACHE_TTL["admin_dashboard_stats"])
-        return AdminDashboardStatsSchema(**data)
+        return AdminDashboardStatsSchema(
+            total_courses=total_courses_count,
+            total_students=total_students_count,
+            total_teachers=total_teachers_count
+        )
 
     async def update_student_leaderboard(self, db: Session, student_id: int, school_id: int):
         try:

@@ -9,20 +9,24 @@ from app.schemas.lesson import Lesson, LessonCreate, LessonUpdate
 from app.services.curriculum import curriculum_service
 from app.services.lesson import lesson_service
 from app.schemas.user import UserContext
+from app.core.decorators import cache_endpoint
+from app.core.cache import cache
 
 router = APIRouter()
 
 @router.post("/curriculums/", response_model=APIResponse[Curriculum])
-def create_curriculum(
+async def create_curriculum(
     curriculum_in: CurriculumCreate,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     new_curriculum = curriculum_service.create_curriculum(db, curriculum_in=curriculum_in, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Curriculum created successfully", data=Curriculum.model_validate(new_curriculum))
 
 @router.get("/courses/{course_id}/curriculums/", response_model=APIResponse[List[Curriculum]])
-def get_curriculums_by_course(
+@cache_endpoint(ttl=600)
+async def get_curriculums_by_course(
     course_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -31,7 +35,8 @@ def get_curriculums_by_course(
     return APIResponse(message="Curriculums retrieved successfully", data=[Curriculum.model_validate(c) for c in curriculums])
 
 @router.get("/curriculums/{curriculum_id}", response_model=APIResponse[Curriculum])
-def get_curriculum(
+@cache_endpoint(ttl=600)
+async def get_curriculum(
     curriculum_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -40,22 +45,24 @@ def get_curriculum(
     return APIResponse(message="Curriculum retrieved successfully", data=Curriculum.model_validate(curriculum))
 
 @router.put("/curriculums/{curriculum_id}", response_model=APIResponse[Curriculum])
-def update_curriculum(
+async def update_curriculum(
     curriculum_id: int,
     curriculum_in: CurriculumUpdate,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_curriculum = curriculum_service.update_curriculum(db, curriculum_id=curriculum_id, curriculum_in=curriculum_in, current_user_context=context)
+    updated_curriculum = await curriculum_service.update_curriculum(db, curriculum_id=curriculum_id, curriculum_in=curriculum_in, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Curriculum updated successfully", data=Curriculum.model_validate(updated_curriculum))
 
 @router.delete("/curriculums/{curriculum_id}", response_model=APIResponse)
-def delete_curriculum(
+async def delete_curriculum(
     curriculum_id: int,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    response = curriculum_service.delete_curriculum(db, curriculum_id=curriculum_id, current_user_context=context)
+    response = await curriculum_service.delete_curriculum(db, curriculum_id=curriculum_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message=response["message"])
 
 
@@ -66,10 +73,12 @@ async def create_lesson(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     new_lesson = await lesson_service.create_lesson(db, lesson_in=lesson_in, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Lesson created successfully", data=Lesson.model_validate(new_lesson))
 
 @router.get("/curriculums/{curriculum_id}/lessons/", response_model=APIResponse[List[Lesson]])
-def get_lessons_by_curriculum(
+@cache_endpoint(ttl=600)
+async def get_lessons_by_curriculum(
     curriculum_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -78,7 +87,8 @@ def get_lessons_by_curriculum(
     return APIResponse(message="Lessons retrieved successfully", data=[Lesson.model_validate(l) for l in lessons])
 
 @router.get("/lessons/{lesson_id}", response_model=APIResponse[Lesson])
-def get_lesson(
+@cache_endpoint(ttl=600)
+async def get_lesson(
     lesson_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -94,6 +104,7 @@ async def update_lesson(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     updated_lesson = await lesson_service.update_lesson(db, lesson_id=lesson_id, lesson_in=lesson_in, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Lesson updated successfully", data=Lesson.model_validate(updated_lesson))
 
 @router.delete("/lessons/{lesson_id}", response_model=APIResponse)
@@ -103,4 +114,5 @@ async def delete_lesson(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     response = await lesson_service.delete_lesson(db, lesson_id=lesson_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message=response["message"])

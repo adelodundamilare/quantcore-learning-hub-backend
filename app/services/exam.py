@@ -11,8 +11,6 @@ from app.schemas.exam import ExamCreate, ExamUpdate, Exam
 from app.schemas.question import QuestionCreate, QuestionUpdate, Question
 from app.schemas.user import UserContext
 from app.utils.permission import PermissionHelper as permission_helper
-from app.utils.cache import cached, delete, get, set
-from app.core.cache_config import CACHE_TTL, CACHE_KEYS
 from app.schemas.question import Question as QuestionSchema
 from app.core.constants import CourseLevelEnum, StudentExamStatusEnum, QuestionTypeEnum
 
@@ -110,7 +108,7 @@ class ExamService:
 
         return course_ids, curriculum_ids
 
-    def create_exam(self, db: Session, exam_in: ExamCreate, current_user_context: UserContext) -> Exam:
+    async def create_exam(self, db: Session, exam_in: ExamCreate, current_user_context: UserContext) -> Exam:
         self._validate_exam_association(exam_in)
         self._require_exam_management_permission(
             db, current_user_context,
@@ -130,7 +128,7 @@ class ExamService:
         self._require_exam_view_permission(db, current_user_context, exam)
         return exam
 
-    def update_exam(self, db: Session, exam_id: int, exam_in: ExamUpdate, current_user_context: UserContext) -> Exam:
+    async def update_exam(self, db: Session, exam_id: int, exam_in: ExamUpdate, current_user_context: UserContext) -> Exam:
         exam = crud_exam.get(db, id=exam_id)
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
@@ -147,7 +145,7 @@ class ExamService:
         updated_exam = crud_exam.update(db, db_obj=exam, obj_in=exam_in)
         return updated_exam
 
-    def delete_exam(self, db: Session, exam_id: int, current_user_context: UserContext) -> Exam:
+    async def delete_exam(self, db: Session, exam_id: int, current_user_context: UserContext) -> Exam:
         exam = crud_exam.get(db, id=exam_id)
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
@@ -206,8 +204,6 @@ class ExamService:
 
         new_question = crud_question.create(db, obj_in=question_in)
         db.flush()
-        delete(CACHE_KEYS["exam_questions"].format(question_in.exam_id))
-        delete(CACHE_KEYS["exam_results"].format(question_in.exam_id))
         return new_question
 
     def create_questions(self, db: Session, questions_in: List[QuestionCreate], current_user_context: UserContext) -> List[Question]:
@@ -226,8 +222,6 @@ class ExamService:
 
         new_questions = crud_question.create_multi(db, objs_in=questions_in)
         db.flush()
-        delete(CACHE_KEYS["exam_questions"].format(exam_id))
-        delete(CACHE_KEYS["exam_results"].format(exam_id))
         return new_questions
 
     def get_question(self, db: Session, question_id: int, current_user_context: UserContext,
@@ -271,8 +265,6 @@ class ExamService:
                 )
 
         updated_question = crud_question.update(db, db_obj=question, obj_in=question_in)
-        delete(CACHE_KEYS["exam_questions"].format(question.exam_id))
-        delete(CACHE_KEYS["exam_results"].format(question.exam_id))
         return updated_question
 
     def delete_question(self, db: Session, question_id: int, current_user_context: UserContext) -> Question:
@@ -287,8 +279,6 @@ class ExamService:
         self._require_exam_management_permission(db, current_user_context, exam=exam)
 
         deleted_question = crud_question.delete(db, id=question_id)
-        delete(CACHE_KEYS["exam_questions"].format(exam.id))
-        delete(CACHE_KEYS["exam_results"].format(exam.id))
         return deleted_question
 
     def get_exam_questions(self, db: Session, exam_id: int, current_user_context: UserContext,
@@ -297,27 +287,6 @@ class ExamService:
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
         self._require_exam_view_permission(db, current_user_context, exam)
-        cache_key = CACHE_KEYS["exam_questions"].format(exam_id)
-        cached_list = get(cache_key)
-        # if cached_list is not None:
-        #     from app.schemas.question import Question as QuestionSchema
-        #     if not include_correct_answers and permission_helper.is_student(current_user_context):
-        #         sanitized = []
-        #         for q in cached_list:
-        #             qc = dict(q)
-        #             qc["correct_answer"] = None
-        #             if "question_text" not in qc and "text" in qc:
-        #                 qc["question_text"] = qc.pop("text")
-        #             sanitized.append(QuestionSchema.model_validate(qc))
-        #         return sanitized
-        #     else:
-        #         updated_list = []
-        #         for q in cached_list:
-        #             qc = dict(q)
-        #             if "question_text" not in qc and "text" in qc:
-        #                 qc["question_text"] = qc.pop("text")
-        #             updated_list.append(qc)
-        #         return [QuestionSchema.model_validate(q) for q in updated_list]
         questions = crud_question.get_by_exam(db, exam_id=exam_id)
         base = []
         for question in questions:
@@ -332,8 +301,6 @@ class ExamService:
                 "created_at": question.created_at,
                 "updated_at": question.updated_at
             })
-        # set(cache_key, base, CACHE_TTL["exam_questions"])
-        # from app.schemas.question import Question as QuestionSchema
         return [QuestionSchema.model_validate(q) for q in base]
 
 

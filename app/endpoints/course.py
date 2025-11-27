@@ -8,23 +8,27 @@ from app.utils import deps
 from app.schemas.course import Course, CourseCreate, CourseUpdate
 from app.services.course import course_service
 from app.schemas.user import UserContext
+from app.core.decorators import cache_endpoint
+from app.core.cache import cache
 
 router = APIRouter()
 
 
 @router.post("/", response_model=APIResponse[Course], status_code=status.HTTP_201_CREATED)
-def create_course(
+async def create_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_in: CourseCreate,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     new_course = course_service.create_course(db, course_in=course_in, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Course created successfully", data=Course.model_validate(new_course))
 
 
 @router.get("/", response_model=APIResponse[List[Course]])
-def get_all_courses(
+@cache_endpoint(ttl=600)
+async def get_all_courses(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
     skip: int = 0,
@@ -35,7 +39,8 @@ def get_all_courses(
 
 
 @router.get("/me", response_model=APIResponse[List[Course]])
-def get_my_courses(
+@cache_endpoint(ttl=300)
+async def get_my_courses(
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
@@ -44,7 +49,8 @@ def get_my_courses(
 
 
 @router.get("/by-school/{school_id}", response_model=APIResponse[List[Course]])
-def get_courses_by_school(
+@cache_endpoint(ttl=600)
+async def get_courses_by_school(
     school_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
@@ -56,7 +62,8 @@ def get_courses_by_school(
 
 
 @router.get("/{course_id}", response_model=APIResponse[Course])
-def read_course(
+@cache_endpoint(ttl=600)
+async def read_course(
     *,
     db: Session = Depends(deps.get_db),
     course_id: int,
@@ -67,30 +74,33 @@ def read_course(
 
 
 @router.put("/{course_id}", response_model=APIResponse[Course])
-def update_course(
+async def update_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_id: int,
     course_in: CourseUpdate,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_course = course_service.update_course(db, course_id=course_id, course_in=course_in, current_user_context=context)
+    updated_course = await course_service.update_course(db, course_id=course_id, course_in=course_in, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Course updated successfully", data=Course.model_validate(updated_course))
 
 
 @router.delete("/{course_id}", response_model=APIResponse[Course])
-def delete_course(
+async def delete_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    deleted_course = course_service.delete_course(db, course_id=course_id, current_user_context=context)
+    deleted_course = await course_service.delete_course(db, course_id=course_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Course deleted successfully", data=Course.model_validate(deleted_course))
 
 
 @router.get("/{course_id}/teachers", response_model=APIResponse[List[User]])
-def get_course_teachers(
+@cache_endpoint(ttl=600)
+async def get_course_teachers(
     *,
     db: Session = Depends(deps.get_db),
     course_id: int,
@@ -101,7 +111,8 @@ def get_course_teachers(
 
 
 @router.get("/{course_id}/students", response_model=APIResponse[List[User]])
-def get_course_students(
+@cache_endpoint(ttl=600)
+async def get_course_students(
     *,
     db: Session = Depends(deps.get_db),
     course_id: int,
@@ -112,53 +123,58 @@ def get_course_students(
 
 
 @router.post("/{course_id}/teachers/{user_id}", response_model=APIResponse[Course])
-def assign_teacher_to_course(
+async def assign_teacher_to_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_id: int,
     user_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_course = course_service.assign_teacher(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    updated_course = await course_service.assign_teacher(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Teacher assigned to course successfully", data=Course.model_validate(updated_course))
 
 
 @router.delete("/{course_id}/teachers/{user_id}", response_model=APIResponse[Course])
-def remove_teacher_from_course(
+async def remove_teacher_from_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_id: int,
     user_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_course = course_service.remove_teacher(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    updated_course = await course_service.remove_teacher(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Teacher removed from course successfully", data=Course.model_validate(updated_course))
 
 
 @router.post("/{course_id}/students/{user_id}", response_model=APIResponse[Course])
-def enroll_student_in_course(
+async def enroll_student_in_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_id: int,
     user_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_course = course_service.enroll_student(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    updated_course = await course_service.enroll_student(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Student enrolled in course successfully", data=Course.model_validate(updated_course))
 
 @router.delete("/{course_id}/students/{user_id}", response_model=APIResponse[Course])
-def remove_student_from_course(
+async def remove_student_from_course(
     *,
     db: Session = Depends(deps.get_transactional_db),
     course_id: int,
     user_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    updated_course = course_service.unenroll_student(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    updated_course = await course_service.unenroll_student(db, course_id=course_id, user_id=user_id, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Student removed from course successfully", data=Course.model_validate(updated_course))
 
 @router.get("/students/{student_id}/courses", response_model=APIResponse[List[Course]])
-def get_student_courses_admin(
+@cache_endpoint(ttl=300)
+async def get_student_courses_admin(
     student_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -167,22 +183,24 @@ def get_student_courses_admin(
     return APIResponse(message="Student courses retrieved successfully", data=[Course.model_validate(c) for c in courses])
 
 @router.put("/students/{student_id}/courses", response_model=APIResponse[dict])
-def update_student_courses_bulk(
+async def update_student_courses_bulk(
     student_id: int,
     course_update: StudentCourseUpdate,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    result = course_service.update_student_courses_bulk(
+    result = await course_service.update_student_courses_bulk(
         db, student_id=student_id, course_ids=course_update.course_ids, current_user_context=context
     )
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(
         message=f"Student courses updated: {result['enrolled_count']} enrolled, {result['unenrolled_count']} unenrolled",
         data=result
     )
 
 @router.get("/teachers/{teacher_id}/courses", response_model=APIResponse[List[Course]])
-def get_teacher_courses_admin(
+@cache_endpoint(ttl=300)
+async def get_teacher_courses_admin(
     teacher_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
@@ -191,15 +209,16 @@ def get_teacher_courses_admin(
     return APIResponse(message="Teacher courses retrieved successfully", data=[Course.model_validate(c) for c in courses])
 
 @router.put("/teachers/{teacher_id}/courses", response_model=APIResponse[dict])
-def update_teacher_courses_bulk(
+async def update_teacher_courses_bulk(
     teacher_id: int,
     course_update: TeacherCourseUpdate,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    result = course_service.update_teacher_courses_bulk(
+    result = await course_service.update_teacher_courses_bulk(
         db, teacher_id=teacher_id, course_ids=course_update.course_ids, current_user_context=context
     )
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(
         message=f"Teacher courses updated: {result['assigned_count']} assigned, {result['removed_count']} removed",
         data=result

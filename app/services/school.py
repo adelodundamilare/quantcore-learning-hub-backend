@@ -1,26 +1,24 @@
-import asyncio
+import math
+import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from app.core.config import settings
 
+from app.core.config import settings
+from app.core.constants import RoleEnum
+from app.core.security import get_password_hash
 from app.crud.school import school as crud_school
 from app.crud.user import user as crud_user
 from app.crud.role import role as crud_role
 from app.crud.course import course as crud_course
+from app.crud.base import PaginatedResponse
+from app.crud.one_time_token import one_time_token as crud_one_time_token
+from app.models.school import School
+from app.models.one_time_token import TokenType
 from app.schemas.school import SchoolCreate, AdminSchoolDataSchema
 from app.schemas.user import UserCreate, UserContext
-from app.crud.base import PaginatedResponse
-import math
-from app.models.school import School
-from app.core.security import get_password_hash
-from app.core.constants import RoleEnum
 from app.services.email import EmailService
 from app.services.notification import notification_service
-from app.crud.one_time_token import one_time_token as crud_one_time_token
-from app.models.one_time_token import TokenType
-import random
-from app.core.cache import cache
 
 class SchoolService:
 
@@ -121,26 +119,17 @@ class SchoolService:
         )
 
     def get_all_schools_admin(self, db: Session, skip: int = 0, limit: int = 100) -> list[School]:
-        """Get all schools for super admin management."""
         return crud_school.get_multi(db=db, skip=skip, limit=limit)
 
-    def update_school_admin(self, db: Session, school_id: int, school_in) -> School:
-        """Update school details by super admin."""
+    async def update_school_admin(self, db: Session, school_id: int, school_in) -> School:
         school = crud_school.get(db=db, id=school_id)
         if not school:
             raise HTTPException(status_code=404, detail="School not found")
 
         updated = crud_school.update(db=db, db_obj=school, obj_in=school_in)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(cache.delete(f"school:details:{school_id}"))
-        loop.run_until_complete(cache.delete(f"school:students:{school_id}:0:100"))
-        loop.run_until_complete(cache.delete(f"school:teachers:{school_id}:0:100"))
-        loop.run_until_complete(cache.delete(f"courses:school:{school_id}:0:100"))
         return updated
 
-    def delete_school_admin(self, db: Session, school_id: int) -> School:
-        """Soft delete a school by super admin."""
+    async def delete_school_admin(self, db: Session, school_id: int) -> School:
         school = crud_school.get(db=db, id=school_id)
         if not school:
             raise HTTPException(status_code=404, detail="School not found")
@@ -155,12 +144,6 @@ class SchoolService:
         crud_school.bulk_soft_delete_related_entities(db, school_id)
 
         result = crud_school.delete(db=db, id=school_id)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(cache.delete(f"school:details:{school_id}"))
-        loop.run_until_complete(cache.delete(f"school:students:{school_id}:0:100"))
-        loop.run_until_complete(cache.delete(f"school:teachers:{school_id}:0:100"))
-        loop.run_until_complete(cache.delete(f"courses:school:{school_id}:0:100"))
         return result
 
 school_service = SchoolService()

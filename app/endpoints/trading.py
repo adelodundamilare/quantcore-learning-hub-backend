@@ -29,7 +29,8 @@ from app.schemas.trading import (
 )
 from app.services.polygon import polygon_service
 from app.services.trading import trading_service
-from app.services.popular_stocks_cache import popular_stocks_cache
+from app.core.decorators import cache_endpoint
+from app.core.cache import cache
 
 # Popular stocks to show by default
 POPULAR_STOCKS = [
@@ -44,6 +45,7 @@ def create_trading_router():
     router = APIRouter()
 
     @router.get("/stocks", response_model=APIResponse[List[StockSchema]])
+    @cache_endpoint(ttl=60)
     async def get_stocks(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
@@ -60,13 +62,13 @@ def create_trading_router():
             )
             message = f"Found {len(stocks)} securities matching '{search}'"
         else:
-            stocks_data = await popular_stocks_cache.get_popular_stocks(limit=limit)
-
             stocks = []
-            for stock_data in stocks_data:
+            for symbol in POPULAR_STOCKS[:limit]:
                 try:
-                    stock = StockSchema(**stock_data)
-                    stocks.append(stock)
+                    details = await polygon_service.get_stock_details_combined(symbol)
+                    if details:
+                        stock = StockSchema(symbol=symbol, name=details.get("name"), price=details.get("price"))
+                        stocks.append(stock)
                 except Exception as e:
                     continue
 
@@ -75,6 +77,7 @@ def create_trading_router():
         return APIResponse(message=message, data=stocks)
 
     @router.get("/stocks/{ticker}/details_combined", response_model=APIResponse[StockDetailsSchema])
+    @cache_endpoint(ttl=300)
     async def get_stock_details_combined(
         ticker: str,
         db: Session = Depends(deps.get_db),
@@ -89,6 +92,7 @@ def create_trading_router():
         return APIResponse(message=f"Combined details for {ticker} retrieved successfully", data=combined_details)
 
     @router.get("/stocks/{ticker}/quote", response_model=APIResponse[StockQuoteSchema])
+    @cache_endpoint(ttl=30)
     async def get_stock_quote(
         ticker: str,
         db: Session = Depends(deps.get_db),
@@ -119,6 +123,7 @@ def create_trading_router():
         )
 
     @router.get("/stocks/{ticker}/details", response_model=APIResponse[CompanyDetailsSchema])
+    @cache_endpoint(ttl=300)
     async def get_company_details(
         ticker: str,
         db: Session = Depends(deps.get_db),
@@ -147,6 +152,7 @@ def create_trading_router():
 
 
     @router.get("/account/balance", response_model=APIResponse[AccountBalanceSchema])
+    @cache_endpoint(ttl=60)
     async def get_account_balance(
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
@@ -183,6 +189,7 @@ def create_trading_router():
         )
 
     @router.get("/portfolio", response_model=APIResponse[List[PortfolioPositionSchema]])
+    @cache_endpoint(ttl=120)
     async def get_portfolio(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
@@ -201,6 +208,7 @@ def create_trading_router():
         )
 
     @router.get("/portfolio/history", response_model=APIResponse[PortfolioHistoricalDataSchema])
+    @cache_endpoint(ttl=300)
     async def get_portfolio_history(
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
@@ -247,6 +255,7 @@ def create_trading_router():
         )
 
     @router.get("/portfolio/{position_id}", response_model=APIResponse[PortfolioItemSchema])
+    @cache_endpoint(ttl=120)
     async def get_portfolio_position_by_id(
         position_id: int,
         db: Session = Depends(deps.get_db),
@@ -273,9 +282,11 @@ def create_trading_router():
             user_id=context.user.id,
             watchlist_in=watchlist_in
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(message="Watchlist created successfully", data=new_watchlist)
 
     @router.get("/watchlists", response_model=APIResponse[List[UserWatchlistSchema]])
+    @cache_endpoint(ttl=300)
     async def get_user_watchlists(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
@@ -291,6 +302,7 @@ def create_trading_router():
         return APIResponse(message="User watchlists retrieved successfully", data=watchlists)
 
     @router.get("/watchlists/{watchlist_id}", response_model=APIResponse[UserWatchlistSchema])
+    @cache_endpoint(ttl=300)
     async def get_user_watchlist_by_id(
         watchlist_id: int,
         db: Session = Depends(deps.get_db),
@@ -316,6 +328,7 @@ def create_trading_router():
             watchlist_id=watchlist_id,
             watchlist_in=watchlist_in
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(message="Watchlist updated successfully", data=updated_watchlist)
 
     @router.delete("/watchlists/{watchlist_id}", response_model=APIResponse[dict])
@@ -324,11 +337,12 @@ def create_trading_router():
         db: Session = Depends(deps.get_transactional_db),
         context: UserContext = Depends(deps.get_current_user_with_context)
     ):
-        result = trading_service.delete_user_watchlist(
+        result = await trading_service.delete_user_watchlist(
             db,
             user_id=context.user.id,
             watchlist_id=watchlist_id
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(message=result["message"])
 
     @router.post("/watchlists/{watchlist_id}/stocks/{symbol}", response_model=APIResponse[UserWatchlistSchema], status_code=status.HTTP_201_CREATED)
@@ -344,6 +358,7 @@ def create_trading_router():
             watchlist_id=watchlist_id,
             symbol=symbol.upper()
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(message="Stock added to watchlist successfully", data=updated_watchlist)
 
     @router.delete("/watchlists/{watchlist_id}/stocks/{symbol}", response_model=APIResponse[UserWatchlistSchema])
@@ -359,6 +374,7 @@ def create_trading_router():
             watchlist_id=watchlist_id,
             symbol=symbol.upper()
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(message="Stock removed from watchlist successfully", data=updated_watchlist)
 
     @router.post("/trade/buy", response_model=APIResponse[TradeOrder], status_code=status.HTTP_201_CREATED)
@@ -377,6 +393,7 @@ def create_trading_router():
             user_id=context.user.id,
             order_in=order_in
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(
             message="Buy order placed successfully",
             data=new_order
@@ -398,6 +415,7 @@ def create_trading_router():
             user_id=context.user.id,
             order_in=order_in
         )
+        await cache.invalidate_user_cache(context.user.id)
         return APIResponse(
             message="Sell order placed successfully",
             data=new_order
@@ -412,7 +430,8 @@ def create_trading_router():
         return await trading_service.preview_order(db, context.user.id, order_preview)
 
     @router.get("/trade/history", response_model=APIResponse[List[TradeOrder]])
-    def get_trade_history(
+    @cache_endpoint(ttl=300)
+    async def get_trade_history(
         db: Session = Depends(deps.get_db),
         context: UserContext = Depends(deps.get_current_user_with_context),
         skip: int = 0,
@@ -430,6 +449,7 @@ def create_trading_router():
         )
 
     @router.get("/stocks/{ticker}/history", response_model=APIResponse[HistoricalDataSchema])
+    @cache_endpoint(ttl=600)
     async def get_historical_data(
         ticker: str,
         from_date: str,
@@ -489,6 +509,7 @@ def create_trading_router():
         )
 
     @router.get("/news", response_model=APIResponse[List[NewsArticle]])
+    @cache_endpoint(ttl=600)
     async def get_market_news(
         limit: int = 20,
         symbols: Optional[str] = None,
@@ -499,6 +520,7 @@ def create_trading_router():
         return APIResponse(message="Market news retrieved successfully", data=[NewsArticle(**article) for article in news_articles])
 
     @router.get("/news/{symbol}", response_model=APIResponse[List[NewsArticle]])
+    @cache_endpoint(ttl=600)
     async def get_stock_news(
         symbol: str,
         limit: int = 10,

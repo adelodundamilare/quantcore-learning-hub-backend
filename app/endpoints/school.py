@@ -11,6 +11,8 @@ from app.utils import deps
 from app.utils.permission import permission_helper
 from app.crud.base import PaginatedResponse
 from app.core.constants import RoleEnum
+from app.core.decorators import cache_endpoint
+from app.core.cache import cache
 
 router = APIRouter()
 
@@ -31,11 +33,13 @@ async def create_school(
     await user_service.admin_invite_user(
         db, invite_in=invite_in
     )
+    await cache.invalidate_user_cache(context.user.id)
 
     return APIResponse(message="School and admin created successfully")
 
 @router.get("/{school_id}", response_model=APIResponse[School])
-def read_school(
+@cache_endpoint(ttl=600)
+async def read_school(
     *,
     db: Session = Depends(deps.get_db),
     school_id: int
@@ -47,7 +51,8 @@ def read_school(
     return APIResponse(message="School retrieved successfully", data=school)
 
 @router.get("/{school_id}/students", response_model=APIResponse[List[UserSchema]])
-def get_school_students(
+@cache_endpoint(ttl=300)
+async def get_school_students(
     school_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
@@ -59,7 +64,8 @@ def get_school_students(
     return APIResponse(message="Students for school retrieved successfully", data=[UserSchema.model_validate(u) for u in students])
 
 @router.get("/{school_id}/teachers", response_model=APIResponse[List[UserSchema]])
-def get_school_teachers(
+@cache_endpoint(ttl=300)
+async def get_school_teachers(
     school_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
@@ -71,7 +77,7 @@ def get_school_teachers(
 
 
 @router.put("/{school_id}/teachers/{teacher_id}", response_model=APIResponse[UserSchema])
-def update_teacher_details(
+async def update_teacher_details(
     school_id: int,
     teacher_id: int,
     update_data: TeacherUpdate,
@@ -80,11 +86,13 @@ def update_teacher_details(
 ):
     """Update a teacher's level in a specific school."""
     updated_teacher = user_service.update_teacher_details(db, school_id=school_id, teacher_id=teacher_id, update_data=update_data, current_user_context=context)
+    await cache.invalidate_user_cache(context.user.id)
     return APIResponse(message="Teacher details updated successfully", data=UserSchema.model_validate(updated_teacher))
 
 
 @router.get("/{school_id}/teams", response_model=APIResponse[List[UserSchema]])
-def get_school_teams(
+@cache_endpoint(ttl=300)
+async def get_school_teams(
     school_id: int,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
@@ -96,7 +104,8 @@ def get_school_teams(
 
 
 @router.get("/admin/schools/report", response_model=APIResponse[PaginatedResponse[AdminSchoolDataSchema]])
-def get_admin_schools_report(
+@cache_endpoint(ttl=600)
+async def get_admin_schools_report(
     *,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),
@@ -108,7 +117,8 @@ def get_admin_schools_report(
 
 
 @router.get("/{school_id}/users/{user_id}", response_model=APIResponse[UserSchema])
-def get_school_user_profile(
+@cache_endpoint(ttl=300)
+async def get_school_user_profile(
     school_id: int,
     user_id: int,
     db: Session = Depends(deps.get_db),
@@ -120,6 +130,7 @@ def get_school_user_profile(
     return APIResponse(message="User profile retrieved successfully", data=UserSchema.model_validate(user_profile))
 
 @router.get("/{school_id}/students/{student_id}", response_model=APIResponse[StudentProfile])
+@cache_endpoint(ttl=300)
 async def get_school_student_profile(
     school_id: int,
     student_id: int,
@@ -132,6 +143,7 @@ async def get_school_student_profile(
     return APIResponse(message="Student profile retrieved successfully", data=student_profile)
 
 @router.get("/{school_id}/teachers/{teacher_id}", response_model=APIResponse[TeacherProfile])
+@cache_endpoint(ttl=300)
 async def get_school_teacher_profile(
     school_id: int,
     teacher_id: int,
@@ -144,20 +156,21 @@ async def get_school_teacher_profile(
     return APIResponse(message="Teacher profile retrieved successfully", data=teacher_profile)
 
 @router.delete("/{school_id}/users/{user_id}", response_model=APIResponse[dict])
-def remove_user_from_school(
+async def remove_user_from_school(
     school_id: int,
     user_id: int,
     db: Session = Depends(deps.get_transactional_db),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     """Remove a user from a school (soft delete)."""
-    result = user_service.remove_user_from_school(
+    result = await user_service.remove_user_from_school(
         db, school_id=school_id, user_id=user_id, current_user_context=context
     )
+    await cache.clear()
     return APIResponse(message=result["message"])
 
 @router.put("/{school_id}/users/{user_id}", response_model=APIResponse[UserSchema])
-def update_user_details_admin(
+async def update_user_details_admin(
     school_id: int,
     user_id: int,
     update_data: UserAdminUpdate,
@@ -165,13 +178,14 @@ def update_user_details_admin(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     """Update user details administratively within a school context."""
-    updated_user = user_service.update_user_details_admin(
+    updated_user = await user_service.update_user_details_admin(
         db, school_id=school_id, user_id=user_id, update_data=update_data.model_dump(exclude_unset=True), current_user_context=context
     )
+    await cache.clear()
     return APIResponse(message="User details updated successfully", data=UserSchema.model_validate(updated_user))
 
 @router.patch("/{school_id}/users/{user_id}/role", response_model=APIResponse[UserSchema])
-def update_user_role(
+async def update_user_role(
     school_id: int,
     user_id: int,
     update_data: UserRoleUpdate,
@@ -179,13 +193,14 @@ def update_user_role(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     """Update a user's role within a school."""
-    updated_user = user_service.update_user_role(
+    updated_user = await user_service.update_user_role(
         db, school_id=school_id, user_id=user_id, update_data=update_data, current_user_context=context
     )
+    await cache.clear()
     return APIResponse(message="User role updated successfully", data=UserSchema.model_validate(updated_user))
 
 @router.patch("/{school_id}/users/{user_id}/status", response_model=APIResponse[UserSchema])
-def update_user_status(
+async def update_user_status(
     school_id: int,
     user_id: int,
     update_data: UserStatusUpdate,
@@ -193,13 +208,15 @@ def update_user_status(
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     """Update a user's active status within a school."""
-    updated_user = user_service.update_user_status(
+    updated_user = await user_service.update_user_status(
         db, school_id=school_id, user_id=user_id, update_data=update_data, current_user_context=context
     )
+    await cache.clear()
     return APIResponse(message="User status updated successfully", data=UserSchema.model_validate(updated_user))
 
 @router.get("/admin/schools", response_model=APIResponse[List[School]], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
-def get_all_schools_admin(
+@cache_endpoint(ttl=600)
+async def get_all_schools_admin(
     *,
     db: Session = Depends(deps.get_db),
     skip: int = 0,
@@ -210,7 +227,7 @@ def get_all_schools_admin(
     return APIResponse(message="Schools retrieved successfully", data=[School.model_validate(school) for school in schools])
 
 @router.put("/admin/schools/{school_id}", response_model=APIResponse[School], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
-def update_school_admin(
+async def update_school_admin(
     *,
     school_id: int,
     school_in: SchoolUpdate,
@@ -218,14 +235,16 @@ def update_school_admin(
 ):
     """Update school details by super admin."""
     updated_school = school_service.update_school_admin(db=db, school_id=school_id, school_in=school_in)
+    await cache.clear()
     return APIResponse(message="School updated successfully", data=School.model_validate(updated_school))
 
 @router.delete("/admin/schools/{school_id}", response_model=APIResponse[dict], dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
-def delete_school_admin(
+async def delete_school_admin(
     *,
     school_id: int,
     db: Session = Depends(deps.get_transactional_db)
 ):
     """Soft delete a school by super admin."""
-    school_service.delete_school_admin(db=db, school_id=school_id)
+    await school_service.delete_school_admin(db=db, school_id=school_id)
+    await cache.clear()
     return APIResponse(message="School deleted successfully")

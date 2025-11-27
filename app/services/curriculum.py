@@ -42,7 +42,7 @@ class CurriculumService:
         PermissionHelper.require_course_view_permission(current_user_context, course)
         return crud_curriculum.get_by_course(db, course_id=course_id)
 
-    def update_curriculum(self, db: Session, curriculum_id: int, curriculum_in: CurriculumUpdate, current_user_context: UserContext) -> Curriculum:
+    async def update_curriculum(self, db: Session, curriculum_id: int, curriculum_in: CurriculumUpdate, current_user_context: UserContext) -> Curriculum:
         curriculum = crud_curriculum.get(db, id=curriculum_id)
         if not curriculum:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found.")
@@ -53,7 +53,7 @@ class CurriculumService:
         updated_curriculum = crud_curriculum.update(db, db_obj=curriculum, obj_in=curriculum_in)
         return updated_curriculum
 
-    def delete_curriculum(self, db: Session, curriculum_id: int, current_user_context: UserContext):
+    async def delete_curriculum(self, db: Session, curriculum_id: int, current_user_context: UserContext):
         curriculum = crud_curriculum.get(db, id=curriculum_id)
         if not curriculum:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found.")
@@ -61,6 +61,8 @@ class CurriculumService:
         PermissionHelper.require_not_student(current_user_context)
         PermissionHelper.require_course_management_permission(current_user_context, curriculum.course)
 
+        course_id = curriculum.course_id
+        school_id = curriculum.course.school_id
         crud_curriculum.delete(db, id=curriculum_id)
         return {"message": "Curriculum deleted successfully"}
 

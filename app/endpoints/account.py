@@ -19,6 +19,8 @@ from app.schemas.response import APIResponse
 from app.core.constants import RoleEnum
 from app.schemas.trading import AccountBalanceSchema
 from app.services.trading import trading_service
+from app.core.cache import cache
+from app.core.decorators import cache_endpoint
 from decimal import Decimal
 from fastapi import UploadFile, File
 
@@ -40,20 +42,23 @@ async def add_funds_to_student_account(
         amount=amount,
         current_user_context=context
     )
+    await cache.invalidate_user_cache(student_id)
     return APIResponse(message="Funds added successfully", data=updated_balance)
 
 @router.get("/me", response_model=APIResponse[User])
-def read_users_me(current_user: User = Depends(deps.get_current_user)):
+@cache_endpoint(ttl=300)
+async def read_users_me(current_user: User = Depends(deps.get_current_user)):
     return APIResponse(message="User profile fetched successfully", data=User.model_validate(current_user))
 
 @router.put("/me", response_model=APIResponse[User])
-def update_user_me(
+async def update_user_me(
     *,
     db: Session = Depends(deps.get_transactional_db),
     user_in: UserUpdate,
     current_user: User = Depends(deps.get_current_user)
 ):
     updated_user = user_crud.update(db, db_obj=current_user, obj_in=user_in)
+    await cache.invalidate_user_cache(current_user.id)
     return APIResponse(message="User profile updated successfully", data=User.model_validate(updated_user))
 
 @router.post("/invite", response_model=APIResponse[User])
@@ -67,6 +72,7 @@ async def invite_user(
     invited_user = await user_service.invite_user(
         db, current_user_context=context, invite_in=invite_in
     )
+    await cache.clear()
 
     return APIResponse(message="User invited successfully", data=User.model_validate(invited_user))
 
@@ -105,6 +111,7 @@ async def bulk_invite_users(
             school=context.school,
             current_user_context=context
         )
+        await cache.clear()
 
         return APIResponse(
             message="Bulk invite processing started",
@@ -119,7 +126,8 @@ async def bulk_invite_users(
         )
 
 @router.get("/bulk-invite/{task_id}", response_model=APIResponse[BulkInviteStatus])
-def get_bulk_invite_status(
+@cache_endpoint(ttl=60)
+async def get_bulk_invite_status(
     task_id: str,
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
 ):
@@ -165,6 +173,7 @@ async def change_password(
 
         # log out current session
         auth_service.logout(db=db, token=credentials.credentials)
+        await cache.invalidate_user_cache(current_user.id)
         logger.info(f"Password changed for user: {current_user.email}")
         return APIResponse(message="Password updated successfully")
     except Exception as e:
@@ -178,6 +187,7 @@ async def delete_account(
 ):
     try:
         user_crud.delete(db, id=current_user.id)
+        await cache.invalidate_user_cache(current_user.id)
         logger.info(f"Account deleted: {current_user.email}")
         return {"message": "Account deleted successfully"}
     except Exception as e:
@@ -185,15 +195,17 @@ async def delete_account(
         raise
 
 @router.delete("/users/{user_id}", dependencies=[Depends(deps.require_role(RoleEnum.SUPER_ADMIN))])
-def delete_user_by_admin(
+async def delete_user_by_admin(
     user_id: int,
     db: Session = Depends(deps.get_transactional_db)
 ):
     deleted_user = user_service.delete_user_by_admin(db, user_id=user_id)
+    await cache.clear()
     return APIResponse(message="User deleted successfully", data=deleted_user)
 
 @router.get("/users/admins", response_model=APIResponse[List[AdminUserResponse]])
-def get_admin_users(
+@cache_endpoint(ttl=600)
+async def get_admin_users(
     db: Session = Depends(deps.get_db),
     context: deps.UserContext = Depends(deps.get_current_user_with_context),
     skip: int = 0,

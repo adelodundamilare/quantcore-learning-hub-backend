@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.services.school import school_service
+from app.core.cache import cache
 
 from app.schemas.response import APIResponse
 from app.schemas.school import School, SchoolCreate
@@ -37,10 +38,11 @@ async def school_signup(
         school_in=signup_request.school,
         admin_in=signup_request.admin
     )
+    await cache.clear()
     return APIResponse(message="School and admin created successfully", data=School.model_validate(new_school))
 
 @router.post("/temp-create-super-admin", response_model=APIResponse[User])
-def school_signup(
+async def create_super_admin(
     *,
     db: Session = Depends(deps.get_db),
     signup_request: SuperAdminCreate
@@ -50,6 +52,7 @@ def school_signup(
         db=db,
         super_admin_in=signup_request
     )
+    await cache.clear()
     return APIResponse(message="Super admin created successfully", data=User.model_validate(new_admin))
 
 @router.post("/login", response_model=APIResponse[LoginResponse])

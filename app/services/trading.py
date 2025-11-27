@@ -38,10 +38,8 @@ from app.schemas.trading import (
     WatchlistStockSchema,
 )
 from app.schemas.user import UserContext
-from app.services.cache_service import cache_service
 from app.services.logo import logo_service
 from app.services.polygon import polygon_service
-from app.utils.cache import cached
 from app.utils.events import event_bus
 from app.utils.permission import PermissionHelper as permission_helper
 
@@ -221,7 +219,7 @@ class TradingService:
         )
         return UserWatchlistSchema.model_validate(updated_watchlist)
 
-    def delete_user_watchlist(
+    async def delete_user_watchlist(
         self,
         db: Session,
         user_id: int,
@@ -510,8 +508,6 @@ class TradingService:
             }
         )
 
-        await cache_service.invalidate_trading_cache(student_id)
-
         return AccountBalanceSchema.model_validate(account)
 
     async def get_portfolio(
@@ -645,8 +641,6 @@ class TradingService:
         })
 
         new_trade = crud_trade_order.create(db, obj_in=trade_data)
-
-        await cache_service.invalidate_trading_cache(user_id)
 
         await event_bus.publish("trade_executed", {
             "student_id": user_id,
@@ -800,8 +794,7 @@ class TradingService:
             order_type=order_preview.order_type
         )
 
-    @cached("trades:user:{}:{}:{}", ttl=300)
-    def get_trade_history(
+    async def get_trade_history(
         self,
         db: Session,
         user_id: int,

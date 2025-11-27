@@ -1,6 +1,4 @@
 from datetime import datetime
-from app.utils.cache import get, set, delete
-from app.core.cache_config import CACHE_KEYS, CACHE_TTL
 from typing import List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -10,13 +8,13 @@ from app.crud.lesson_progress import lesson_progress as crud_lesson_progress
 from app.crud.course import course as crud_course
 from app.crud.lesson import lesson as crud_lesson
 from app.crud.course_reward import course_reward as crud_reward
+from app.crud.exam import exam as crud_exam
+from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 from app.schemas.user import UserContext
 from app.schemas.lesson_progress import LessonProgressCreate
 from app.schemas.reward_rating import CourseRewardCreate
 from app.models.course_enrollment import EnrollmentStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
-from app.crud.exam import exam as crud_exam
-from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
 
 
 
@@ -72,7 +70,8 @@ class CourseProgressService:
                     awarded_at=datetime.now()
                 )
                 crud_reward.create(db, obj_in=reward_in)
-    def start_course(self, db: Session, course_id: int, current_user_context: UserContext):
+
+    async def start_course(self, db: Session, course_id: int, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -95,7 +94,7 @@ class CourseProgressService:
 
         return enrollment
 
-    def start_lesson(self, db: Session, lesson_id: int, current_user_context: UserContext):
+    async def start_lesson(self, db: Session, lesson_id: int, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -138,7 +137,7 @@ class CourseProgressService:
         db.flush()
         return lesson_progress
 
-    def complete_lesson(self, db: Session, lesson_id: int, current_user_context: UserContext):
+    async def complete_lesson(self, db: Session, lesson_id: int, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -228,13 +227,7 @@ class CourseProgressService:
                     detail="You can only view your own enrollments."
                 )
 
-        cache_key = CACHE_KEYS["user_enrollments"].format(user_id)
-        cached_list = get(cache_key)
-        if cached_list is not None:
-            return cached_list
-
         enrollments = crud_enrollment.get_by_user(db, user_id=user_id)
-        set(cache_key, enrollments, CACHE_TTL["user_enrollments"])
         return enrollments
 
 

@@ -8,12 +8,10 @@ from app.crud.course_rating import course_rating as crud_rating
 from app.crud.course_enrollment import course_enrollment as crud_enrollment
 from app.crud.course import course as crud_course
 from app.schemas.user import UserContext
-from app.schemas.reward_rating import ( CourseRewardCreate, CourseRatingCreate, CourseRatingUpdate, CourseRatingStats)
+from app.schemas.reward_rating import (CourseRewardCreate, CourseRatingCreate, CourseRatingUpdate, CourseRatingStats)
 from app.models.course_enrollment import EnrollmentStatusEnum
 from app.utils.permission import PermissionHelper as permission_helper
-from app.utils.cache import get, set, delete
 from app.utils.events import event_bus
-import asyncio
 
 
 class RewardRatingService:
@@ -48,8 +46,6 @@ class RewardRatingService:
         reward = crud_reward.create(db, obj_in=reward_in)
         db.flush()
 
-        delete(f"user_points_{enrollment.user_id}")
-
         await event_bus.publish("reward_awarded", {
             "student_id": enrollment.user_id,
             "course_id": enrollment.course_id,
@@ -78,18 +74,12 @@ class RewardRatingService:
                     detail="You can only view your own points."
                 )
 
-        cache_key = f"user_points_{user_id}"
-        cached = get(cache_key)
-        if cached:
-            return cached
-
         total_points = crud_reward.get_total_points_by_user(db, user_id=user_id)
         result = {"user_id": user_id, "total_points": total_points}
 
-        set(cache_key, result, 300)
         return result
 
-    def create_rating(self, db: Session, rating_in: CourseRatingCreate, current_user_context: UserContext):
+    async def create_rating(self, db: Session, rating_in: CourseRatingCreate, current_user_context: UserContext):
         if not permission_helper.is_student(current_user_context):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -133,10 +123,11 @@ class RewardRatingService:
 
         rating = crud_rating.create(db, obj_in=rating_data)
         db.flush()
+
         return rating
 
-    def update_rating(self, db: Session, rating_id: int, rating_in: CourseRatingUpdate,
-                     current_user_context: UserContext):
+    async def update_rating(self, db: Session, rating_id: int, rating_in: CourseRatingUpdate,
+                           current_user_context: UserContext):
         rating = crud_rating.get(db, id=rating_id)
         if not rating:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rating not found.")
@@ -148,9 +139,10 @@ class RewardRatingService:
             )
 
         updated_rating = crud_rating.update(db, db_obj=rating, obj_in=rating_in)
+
         return updated_rating
 
-    def delete_rating(self, db: Session, rating_id: int, current_user_context: UserContext):
+    async def delete_rating(self, db: Session, rating_id: int, current_user_context: UserContext):
         rating = crud_rating.get(db, id=rating_id)
         if not rating:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rating not found.")
@@ -162,7 +154,10 @@ class RewardRatingService:
                     detail="You can only delete your own ratings."
                 )
 
+        course_id = rating.course_id
+        course = rating.course
         deleted_rating = crud_rating.delete(db, id=rating_id)
+
         return deleted_rating
 
     def get_course_ratings(self, db: Session, course_id: int, current_user_context: UserContext,

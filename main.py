@@ -8,8 +8,6 @@ from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
 import socketio
 import asyncio
-from app.endpoints.cache_admin import router as cache_admin_router
-from app.endpoints.cache_monitoring import router as cache_monitoring_router
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
@@ -56,10 +54,6 @@ trading_router = trading.create_trading_router()
 app.include_router(trading_router, prefix="/trading", tags=["Trading"])
 app.include_router(webhooks.router, tags=["Webhooks"])
 app.include_router(stock_options.router, prefix="/stock-options", tags=["Stock Options"])
-
-# Cache admin endpoints (only in non-production)
-app.include_router(cache_admin_router, prefix="/cache", tags=["cache-admin"])
-app.include_router(cache_monitoring_router, prefix="/admin", tags=["performance"])
 
 @app.on_event("startup")
 async def startup_event():

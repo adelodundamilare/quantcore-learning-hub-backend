@@ -1,151 +1,78 @@
-import asyncio
-import inspect
-from functools import wraps
-from typing import Optional, Callable, List
-import logging
-
+import functools
+from typing import Optional, Callable, Any
 from app.core.cache import cache
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
 
-def cache_result(
-    key_prefix: str,
-    ttl: Optional[int] = None,
-    skip_cache: bool = False,
-    invalidate_patterns: Optional[List[str]] = None,
-    serialize_args: bool = True
-):
+def cache_endpoint(ttl: int = 300, key_prefix: Optional[str] = None):
     def decorator(func: Callable) -> Callable:
-        is_async = inspect.iscoroutinefunction(func)
-
-        @wraps(func)
+        @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
-            if skip_cache or not settings.CACHE_ENABLED:
+            if not settings.CACHE_ENABLED:
                 return await func(*args, **kwargs)
-
-            if serialize_args:
-                cache_key = cache.generate_key(key_prefix, *args, **kwargs)
-            else:
-                cache_key = f"{key_prefix}:default"
-
-            cached_result = await cache.get(cache_key)
-            if cached_result is not None:
-                logger.debug(f"Cache HIT for key: {cache_key}")
-                return cached_result
-
-            logger.debug(f"Cache MISS for key: {cache_key}")
-
-            try:
-                result = await func(*args, **kwargs)
-
-                await cache.set(cache_key, result, ttl)
-
-                return result
-            except Exception as e:
-                logger.error(f"Function execution failed: {e}")
-                raise
-
-        @wraps(func)
+            
+            cache_key = _generate_cache_key(func.__name__, args, kwargs, key_prefix)
+            
+            cached_value = await cache.get(cache_key)
+            if cached_value is not None:
+                return cached_value
+            
+            result = await func(*args, **kwargs)
+            
+            if result is not None:
+                await cache.set(cache_key, result, ttl=ttl)
+            
+            return result
+        
+        @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
-            if skip_cache or not settings.CACHE_ENABLED:
+            if not settings.CACHE_ENABLED:
                 return func(*args, **kwargs)
-
-            loop = None
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            if serialize_args:
-                cache_key = cache.generate_key(key_prefix, *args, **kwargs)
-            else:
-                cache_key = f"{key_prefix}:default"
-
-            cached_result = loop.run_until_complete(cache.get(cache_key))
-            if cached_result is not None:
-                logger.debug(f"Cache HIT for key: {cache_key}")
-                return cached_result
-
-            logger.debug(f"Cache MISS for key: {cache_key}")
-
-            try:
-                result = func(*args, **kwargs)
-
-                loop.run_until_complete(cache.set(cache_key, result, ttl))
-
-                return result
-            except Exception as e:
-                logger.error(f"Function execution failed: {e}")
-                raise
-
-        return async_wrapper if is_async else sync_wrapper
-
-    return decorator
-
-def invalidate_cache(*patterns: str):
-    async def invalidate():
-        if not settings.CACHE_ENABLED:
-            logger.debug("Cache disabled, skipping invalidation")
-            return
-        for pattern in patterns:
-            deleted_count = await cache.delete_pattern(pattern)
-            logger.info(f"Invalidated {deleted_count} cache entries matching pattern: {pattern}")
-
-    return invalidate
-
-def cache_user_data(ttl: int = 300):
-    return cache_result("user", ttl=ttl)
-
-def cache_course_data(ttl: int = 600):
-    return cache_result("course", ttl=ttl)
-
-def cache_trading_data(ttl: int = 30):
-    return cache_result("trading", ttl=ttl)
-
-def cache_stock_data(ttl: int = 60):
-    return cache_result("stock", ttl=ttl)
-
-def cache_school_data(ttl: int = 900):
-    return cache_result("school", ttl=ttl)
-
-def cache_leaderboard(ttl: int = 300):
-    return cache_result("leaderboard", ttl=ttl)
-
-def cache_notifications(ttl: int = 120):
-    return cache_result("notifications", ttl=ttl)
-
-def cache_sync_safe(key_prefix: str, ttl: Optional[int] = None):
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(*args, **kwargs):
+            
+            cache_key = _generate_cache_key(func.__name__, args, kwargs, key_prefix)
+            
             return func(*args, **kwargs)
-        return wrapper
+        
+        if _is_async_function(func):
+            return async_wrapper
+        return sync_wrapper
+    
     return decorator
 
-class CacheInvalidationContext:
-    def __init__(self, *patterns: str):
-        self.patterns = patterns
 
-    async def __aenter__(self):
-        return self
+def _generate_cache_key(func_name: str, args: tuple, kwargs: dict, prefix: Optional[str] = None) -> str:
+    user_id = None
+    context = kwargs.get('context')
+    if context and hasattr(context, 'user'):
+        user_id = context.user.id
+    
+    if user_id:
+        if prefix:
+            key_parts = [f"user:{user_id}:{prefix}"]
+        else:
+            key_parts = [f"user:{user_id}:{func_name}"]
+    else:
+        if prefix:
+            key_parts = [prefix]
+        else:
+            key_parts = [func_name]
+    
+    for arg in args:
+        if hasattr(arg, '__dict__'):
+            continue
+        key_parts.append(str(arg))
+    
+    if kwargs:
+        skip_keys = {'context', 'db', 'current_user', 'current_user_with_context'}
+        sorted_kwargs = sorted(kwargs.items())
+        for k, v in sorted_kwargs:
+            if k not in skip_keys and not isinstance(v, (Callable, type)):
+                key_parts.append(f"{k}={v}")
+    
+    return ":".join(key_parts)
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:  # Only invalidate if no exception occurred
-            for pattern in self.patterns:
-                await cache.delete_pattern(pattern)
 
-class CacheKeys:
-    USER_PROFILE = "user:profile:{user_id}"
-    USER_CONTEXTS = "user:contexts:{user_id}"
-    COURSE_LIST = "course:list:{school_id}"
-    COURSE_DETAILS = "course:details:{course_id}"
-    TRADING_PORTFOLIO = "trading:portfolio:{user_id}"
-    TRADING_BALANCE = "trading:balance:{user_id}"
-    STOCK_PRICE = "stock:price:{symbol}"
-    POPULAR_STOCKS = "stock:popular"
-    SCHOOL_STUDENTS = "school:students:{school_id}"
-    SCHOOL_TEACHERS = "school:teachers:{school_id}"
-    LEADERBOARD_GLOBAL = "leaderboard:global"
-    NOTIFICATIONS_USER = "notifications:user:{user_id}"
+def _is_async_function(func: Callable) -> bool:
+    import asyncio
+    import inspect
+    return asyncio.iscoroutinefunction(func) or inspect.iscoroutinefunction(func)

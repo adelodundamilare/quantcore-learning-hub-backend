@@ -10,6 +10,8 @@ from app.schemas.reward_rating import (
 )
 from app.services.reward_rating import reward_rating_service
 from app.schemas.user import UserContext
+from app.core.decorators import cache_endpoint
+from app.core.cache import cache
 
 router = APIRouter()
 
@@ -24,11 +26,13 @@ async def award_completion_reward(
     reward = await reward_rating_service.award_completion_reward(
         db, enrollment_id=enrollment_id, current_user_context=context
     )
+    await cache.clear()
     return APIResponse(message="Reward awarded successfully", data=CourseReward.model_validate(reward))
 
 
 @router.get("/users/{user_id}/rewards", response_model=APIResponse[List[CourseReward]])
-def get_user_rewards(
+@cache_endpoint(ttl=300)
+async def get_user_rewards(
     *,
     db: Session = Depends(deps.get_db),
     user_id: int,
@@ -42,7 +46,8 @@ def get_user_rewards(
 
 
 @router.get("/users/{user_id}/points", response_model=APIResponse[dict])
-def get_user_total_points(
+@cache_endpoint(ttl=300)
+async def get_user_total_points(
     *,
     db: Session = Depends(deps.get_db),
     user_id: int,
@@ -53,43 +58,47 @@ def get_user_total_points(
 
 
 @router.post("/courses/ratings", response_model=APIResponse[CourseRating], status_code=status.HTTP_201_CREATED)
-def create_course_rating(
+async def create_course_rating(
     *,
     db: Session = Depends(deps.get_transactional_db),
     rating_in: CourseRatingCreate,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    rating = reward_rating_service.create_rating(db, rating_in=rating_in, current_user_context=context)
+    rating = await reward_rating_service.create_rating(db, rating_in=rating_in, current_user_context=context)
+    await cache.clear()
     return APIResponse(message="Course rated successfully", data=CourseRating.model_validate(rating))
 
 
 @router.put("/ratings/{rating_id}", response_model=APIResponse[CourseRating])
-def update_course_rating(
+async def update_course_rating(
     *,
     db: Session = Depends(deps.get_transactional_db),
     rating_id: int,
     rating_in: CourseRatingUpdate,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    rating = reward_rating_service.update_rating(
+    rating = await reward_rating_service.update_rating(
         db, rating_id=rating_id, rating_in=rating_in, current_user_context=context
     )
+    await cache.clear()
     return APIResponse(message="Rating updated successfully", data=CourseRating.model_validate(rating))
 
 
 @router.delete("/ratings/{rating_id}", response_model=APIResponse[CourseRating])
-def delete_course_rating(
+async def delete_course_rating(
     *,
     db: Session = Depends(deps.get_transactional_db),
     rating_id: int,
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
-    rating = reward_rating_service.delete_rating(db, rating_id=rating_id, current_user_context=context)
+    rating = await reward_rating_service.delete_rating(db, rating_id=rating_id, current_user_context=context)
+    await cache.clear()
     return APIResponse(message="Rating deleted successfully", data=CourseRating.model_validate(rating))
 
 
 @router.get("/courses/{course_id}/ratings", response_model=APIResponse[List[CourseRating]])
-def get_course_ratings(
+@cache_endpoint(ttl=600)
+async def get_course_ratings(
     *,
     db: Session = Depends(deps.get_db),
     course_id: int,
@@ -107,7 +116,8 @@ def get_course_ratings(
 
 
 @router.get("/courses/{course_id}/rating-stats", response_model=APIResponse[CourseRatingStats])
-def get_course_rating_stats(
+@cache_endpoint(ttl=600)
+async def get_course_rating_stats(
     *,
     db: Session = Depends(deps.get_db),
     course_id: int,
@@ -118,7 +128,8 @@ def get_course_rating_stats(
 
 
 @router.get("/courses/{course_id}/my-rating", response_model=APIResponse[CourseRating])
-def get_my_course_rating(
+@cache_endpoint(ttl=300)
+async def get_my_course_rating(
     *,
     db: Session = Depends(deps.get_db),
     course_id: int,

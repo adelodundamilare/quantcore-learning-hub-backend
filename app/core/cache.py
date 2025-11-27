@@ -1,6 +1,5 @@
 import json
 import asyncio
-import hashlib
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict
 import time
@@ -27,27 +26,20 @@ class CacheBackend(ABC):
     async def clear(self) -> bool:
         pass
 
-    @abstractmethod
-    async def exists(self, key: str) -> bool:
-        pass
-
 class MemoryCacheBackend(CacheBackend):
     def __init__(self):
         self._cache: Dict[str, Dict] = {}
         self._lock = asyncio.Lock()
 
     async def get(self, key: str) -> Optional[Any]:
-        # Temporarily disable cache GET to force fresh data
-        # Cache SET operations still work for testing purposes
-        # async with self._lock:
-        #     await self._cleanup_expired()
-        #     item = self._cache.get(key)
-        #     if item and (item.get("expiry", 0) == 0 or time.time() < item["expiry"]):
-        #         return item["value"]
-        #     elif key in self._cache:
-        #         del self._cache[key]
-        #     return None
-        return None
+        async with self._lock:
+            await self._cleanup_expired()
+            item = self._cache.get(key)
+            if item and (item.get("expiry", 0) == 0 or time.time() < item["expiry"]):
+                return item["value"]
+            elif key in self._cache:
+                del self._cache[key]
+            return None
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         async with self._lock:
@@ -95,9 +87,14 @@ class RedisCacheBackend(CacheBackend):
             return value
 
     async def get(self, key: str) -> Optional[Any]:
-        # Temporarily disable cache GET to force fresh data
-        # Cache SET operations still work for testing purposes
-        return None
+        try:
+            serialized = await self.redis.get(key)
+            if serialized is None:
+                return None
+            return self._deserialize(serialized)
+        except Exception as e:
+            logger.error(f"Redis GET error for key {key}: {e}")
+            return None
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         try:
@@ -129,13 +126,6 @@ class RedisCacheBackend(CacheBackend):
             logger.error(f"Redis CLEAR error: {e}")
             return False
 
-    async def exists(self, key: str) -> bool:
-        try:
-            return await self.redis.exists(key) > 0
-        except Exception as e:
-            logger.error(f"Redis EXISTS error for key {key}: {e}")
-            return False
-
 def create_cache_backend() -> CacheBackend:
     if settings.REDIS_URL:
         try:
@@ -160,7 +150,7 @@ class CacheManager:
         if kwargs:
             sorted_kwargs = sorted(kwargs.items())
             key_data += f":{':'.join(f'{k}={v}' for k, v in sorted_kwargs)}"
-        return hashlib.md5(key_data.encode()).hexdigest()
+        return key_data
 
     async def get(self, key: str) -> Optional[Any]:
         return await self.backend.get(key)
@@ -198,5 +188,40 @@ class CacheManager:
 
     async def clear(self) -> bool:
         return await self.backend.clear()
+    
+    async def invalidate_user_cache(self, user_id: int, patterns: Optional[list] = None) -> int:
+        if patterns is None:
+            patterns = []
+        
+        count = 0
+        for pattern in patterns:
+            full_pattern = f"user:{user_id}:{pattern}:*"
+            count += await self.delete_pattern(full_pattern)
+        
+        return count
+    
+    async def invalidate_enrollments(self, user_id: int) -> int:
+        count = 0
+        for pattern in ["enrollments", "courses", "enrollments:completed"]:
+            count += await self.delete_pattern(f"user:{user_id}:{pattern}:*")
+        return count
+    
+    async def invalidate_progress(self, user_id: int) -> int:
+        count = 0
+        for pattern in ["progress", "lessons", "lesson_progress"]:
+            count += await self.delete_pattern(f"user:{user_id}:{pattern}:*")
+        return count
+    
+    async def invalidate_exams(self, user_id: int) -> int:
+        count = 0
+        for pattern in ["exam", "results", "attempt"]:
+            count += await self.delete_pattern(f"user:{user_id}:{pattern}:*")
+        return count
+    
+    async def invalidate_trading(self, user_id: int) -> int:
+        count = 0
+        for pattern in ["portfolio", "balance", "watchlist", "trades"]:
+            count += await self.delete_pattern(f"user:{user_id}:{pattern}:*")
+        return count
 
 cache = CacheManager(cache_backend)

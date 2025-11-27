@@ -9,11 +9,13 @@ from app.utils import deps
 from app.schemas.user import UserContext
 from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, LeaderboardResponseSchema, SchoolDashboardStatsSchema, SchoolReportSchema, TradingLeaderboardResponseSchema
 from app.services.report import report_service
+from app.core.decorators import cache_endpoint
 
 router = APIRouter()
 
 @router.get("/schools/{school_id}/report", response_model=APIResponse[SchoolReportSchema])
-def get_school_report(
+@cache_endpoint(ttl=600)
+async def get_school_report(
     *,
     db: Session = Depends(deps.get_db),
     school_id: int,
@@ -26,6 +28,7 @@ def get_school_report(
 
 
 @router.get("/schools/{school_id}/leaderboard", response_model=APIResponse[LeaderboardResponseSchema])
+@cache_endpoint(ttl=600)
 async def get_school_leaderboard(
     *,
     db: Session = Depends(deps.get_db),
@@ -39,6 +42,7 @@ async def get_school_leaderboard(
 
 
 @router.get("/schools/{school_id}/trading-leaderboard", response_model=APIResponse[TradingLeaderboardResponseSchema])
+@cache_endpoint(ttl=600)
 async def get_school_trading_leaderboard(
     *,
     db: Session = Depends(deps.get_db),
@@ -52,7 +56,8 @@ async def get_school_trading_leaderboard(
 
 
 @router.get("/schools/{school_id}/stats", response_model=APIResponse[SchoolDashboardStatsSchema])
-def get_school_dashboard_stats(
+@cache_endpoint(ttl=600)
+async def get_school_dashboard_stats(
     *,
     db: Session = Depends(deps.get_db),
     school_id: int,
@@ -65,6 +70,7 @@ def get_school_dashboard_stats(
 
 
 @router.get("/admin/dashboard/report", response_model=APIResponse[AdminDashboardReportSchema])
+@cache_endpoint(ttl=600)
 async def get_admin_dashboard_report(
     *,
     db: Session = Depends(deps.get_db),
@@ -77,7 +83,8 @@ async def get_admin_dashboard_report(
 
 
 @router.get("/admin/dashboard/stats", response_model=APIResponse[AdminDashboardStatsSchema])
-def get_admin_dashboard_stats(
+@cache_endpoint(ttl=600)
+async def get_admin_dashboard_stats(
     *,
     db: Session = Depends(deps.get_db),
     context: UserContext = Depends(deps.get_current_user_with_context),

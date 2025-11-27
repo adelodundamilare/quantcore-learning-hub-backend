@@ -8,7 +8,6 @@ from app.schemas.lesson import LessonCreate, LessonUpdate, Lesson
 from app.schemas.user import UserContext
 from app.core.constants import RoleEnum
 from app.services.course import course_service
-from app.services import cache_service
 from app.utils.permission import PermissionHelper
 
 class LessonService:
@@ -25,7 +24,6 @@ class LessonService:
             lesson_in.order = len(existing_lessons)
 
         new_lesson = crud_lesson.create(db, obj_in=lesson_in)
-        await cache_service.invalidate_course_cache(curriculum.course.id, curriculum.course.school_id)
         return new_lesson
 
     def get_lesson(self, db: Session, lesson_id: int, current_user_context: UserContext) -> Lesson:
@@ -53,7 +51,6 @@ class LessonService:
         PermissionHelper.require_course_management_permission(current_user_context, lesson.curriculum.course)
 
         updated_lesson = crud_lesson.update(db, db_obj=lesson, obj_in=lesson_in)
-        await cache_service.invalidate_course_cache(lesson.curriculum.course.id, lesson.curriculum.course.school_id)
         return updated_lesson
 
     async def delete_lesson(self, db: Session, lesson_id: int, current_user_context: UserContext):
@@ -67,7 +64,6 @@ class LessonService:
         course_id = lesson.curriculum.course.id
         school_id = lesson.curriculum.course.school_id
         crud_lesson.delete(db, id=lesson_id)
-        await cache_service.invalidate_course_cache(course_id, school_id)
         return {"message": "Lesson deleted successfully"}
 
 lesson_service = LessonService()

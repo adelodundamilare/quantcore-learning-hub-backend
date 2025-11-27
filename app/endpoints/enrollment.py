@@ -7,12 +7,15 @@ from app.utils import deps
 from app.schemas.user import UserContext
 from app.crud.course_enrollment import course_enrollment as crud_enrollment
 from app.utils.permission import PermissionHelper as permission_helper
+from app.core.cache import cache
+from app.core.decorators import cache_endpoint
 
 router = APIRouter()
 
 
 @router.get("/completed", response_model=APIResponse[List[dict]])
-def get_completed_enrollments(
+@cache_endpoint(ttl=300)
+async def get_completed_enrollments(
     *,
     db: Session = Depends(deps.get_db),
     school_id: int = Query(...),
@@ -49,6 +52,7 @@ async def auto_award_completion_reward(
 
     try:
         reward = await reward_rating_service.award_completion_reward(db, enrollment_id=enrollment_id, current_user_context=context)
+        await cache.clear()
         return APIResponse(message="Reward awarded automatically", data={"points": 100, "reward_id": reward.id})
     except HTTPException as e:
         if "already awarded" in e.detail:
