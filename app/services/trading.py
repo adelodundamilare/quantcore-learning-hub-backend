@@ -952,10 +952,14 @@ class TradingService:
         end_date = to_date.date()
 
         start_holdings = self._calculate_holdings_at_date(all_trades, start_date)
-        start_value = await self._calculate_portfolio_value_at_date(start_holdings, start_date)
+        start_portfolio_value = await self._calculate_portfolio_value_at_date(start_holdings, start_date)
+        start_cash_balance = self._calculate_cash_balance_at_date(db, user_id, all_trades, start_date)
+        start_value = start_portfolio_value + start_cash_balance
 
         end_holdings = self._calculate_holdings_at_date(all_trades, end_date)
-        end_value = await self._calculate_portfolio_value_at_date(end_holdings, end_date)
+        end_portfolio_value = await self._calculate_portfolio_value_at_date(end_holdings, end_date)
+        end_cash_balance = self._calculate_cash_balance_at_date(db, user_id, all_trades, end_date)
+        end_value = end_portfolio_value + end_cash_balance
 
         cash_flows = crud_transaction.get_multi_by_user_in_date_range(
             db, user_id=user_id, from_date=from_date, to_date=to_date
@@ -972,6 +976,38 @@ class TradingService:
             "start_value": float(start_value),
             "end_value": float(end_value)
         }
+
+    def _calculate_cash_balance_at_date(
+        self,
+        db: Session,
+        user_id: int,
+        all_trades: list,
+        target_date: datetime.date
+    ) -> Decimal:
+        """Calculate cash balance at a specific date by replaying transactions"""
+        cash_balance = Decimal("0.00")
+
+        # Add all fund additions up to target date
+        fund_additions = crud_transaction.get_multi_by_user_and_type_up_to_date(
+            db, user_id=user_id, transaction_type="fund_addition", up_to_date=target_date
+        )
+        for transaction in fund_additions:
+            cash_balance += Decimal(str(transaction.amount))
+
+        # Adjust for trades up to target date
+        relevant_trades = [
+            t for t in all_trades
+            if t.executed_at.date() <= target_date and t.status == OrderStatusEnum.FILLED
+        ]
+
+        for trade in relevant_trades:
+            total_amount = Decimal(str(trade.total_amount))
+            if trade.order_type == OrderTypeEnum.BUY:
+                cash_balance -= total_amount
+            elif trade.order_type == OrderTypeEnum.SELL:
+                cash_balance += total_amount
+
+        return cash_balance
 
     def _calculate_holdings_at_date(
         self,

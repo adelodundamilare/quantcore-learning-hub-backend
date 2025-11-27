@@ -2,7 +2,8 @@ from sqlalchemy.orm import Session
 from app.crud.base import CRUDBase
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionCreate, TransactionSchema
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 
 class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionSchema]):
     def get_multi_by_user_and_type(
@@ -23,6 +24,19 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionSchema
                 self.model.user_id == user_id,
                 self.model.created_at >= from_date,
                 self.model.created_at <= to_date
+            )
+            .all()
+        )
+
+    def get_multi_by_user_and_type_up_to_date(
+        self, db: Session, *, user_id: int, transaction_type: str, up_to_date: datetime
+    ) -> List[Transaction]:
+        return (
+            db.query(self.model)
+            .filter(
+                self.model.user_id == user_id,
+                self.model.transaction_type == transaction_type,
+                self.model.created_at <= up_to_date
             )
             .all()
         )
