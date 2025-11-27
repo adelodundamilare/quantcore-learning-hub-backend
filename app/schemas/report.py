@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 class TopPerformerSchema(BaseModel):
     user_id: int
@@ -68,4 +68,17 @@ class AdminDashboardStatsSchema(BaseModel):
     total_students: int
     total_teachers: int
     total_courses: int
+
+
+class LevelProgressSchema(BaseModel):
+    available_lessons: int
+    completed_lessons: int
+    completion_percentage: float
+
+
+class StudentLessonProgressSchema(BaseModel):
+    total_available_lessons: int
+    total_completed_lessons: int
+    overall_completion_percentage: float
+    progress_by_level: Dict[str, LevelProgressSchema]
 

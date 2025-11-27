@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+from collections import defaultdict
 
 from app.schemas.user import UserContext
 from app.schemas.report import SchoolReportSchema, StudentExamStats
@@ -8,7 +9,7 @@ from app.schemas.report import (
     AdminDashboardReportSchema, AdminDashboardStatsSchema, MostActiveUserSchema,
     SchoolDashboardStatsSchema, SchoolReportSchema, LeaderboardEntrySchema,
     LeaderboardResponseSchema, TopPerformerSchema, TradingLeaderboardEntrySchema,
-    TradingLeaderboardResponseSchema
+    TradingLeaderboardResponseSchema, StudentLessonProgressSchema, LevelProgressSchema
 )
 from app.core.constants import RoleEnum
 from app.crud.user import user as crud_user
@@ -17,6 +18,8 @@ from app.crud.role import role as crud_role
 from app.crud.school import school as crud_school
 from app.crud.exam import exam as crud_exam
 from app.crud.exam_attempt import exam_attempt as crud_exam_attempt
+from app.crud.course_enrollment import course_enrollment
+from app.crud.lesson_progress import lesson_progress
 from app.services.exam import exam_service
 from app.services.trading import trading_service
 
@@ -51,6 +54,58 @@ class ReportService:
         return StudentExamStats(
             pending_exams=pending_exams_count,
             overall_grade_percentage=overall_grade_percentage
+        )
+
+    def get_student_lesson_progress_by_level(self, db: Session, current_user_context: UserContext) -> StudentLessonProgressSchema:
+        if not permission_helper.is_student(current_user_context):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This report is only for students.")
+
+        user_id = current_user_context.user.id
+
+        enrollments = course_enrollment.get_by_user(db, user_id=user_id)
+
+        progress_by_level = defaultdict(lambda: {"available": 0, "completed": 0})
+        total_available = 0
+        total_completed = 0
+
+        for enrollment in enrollments:
+            course = enrollment.course
+            if not course or course.deleted_at:
+                continue
+
+            level = course.level.value if course.level else "unknown"
+
+            available_in_course = 0
+            for curriculum in course.curriculums:
+                if curriculum.deleted_at:
+                    continue
+                available_in_course += len([l for l in curriculum.lessons if not l.deleted_at])
+
+            completed_in_course = lesson_progress.count_completed_by_enrollment(db, enrollment.id)
+
+            progress_by_level[level]["available"] += available_in_course
+            progress_by_level[level]["completed"] += completed_in_course
+            total_available += available_in_course
+            total_completed += completed_in_course
+
+        progress_data = {}
+        for level, counts in progress_by_level.items():
+            available = counts["available"]
+            completed = counts["completed"]
+            percentage = (completed / available * 100) if available > 0 else 0.0
+            progress_data[level] = LevelProgressSchema(
+                available_lessons=available,
+                completed_lessons=completed,
+                completion_percentage=round(percentage, 2)
+            )
+
+        overall_percentage = (total_completed / total_available * 100) if total_available > 0 else 0.0
+
+        return StudentLessonProgressSchema(
+            total_available_lessons=total_available,
+            total_completed_lessons=total_completed,
+            overall_completion_percentage=round(overall_percentage, 2),
+            progress_by_level=progress_data
         )
 
     def get_school_report(self, db: Session, school_id: int, current_user_context: UserContext, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> SchoolReportSchema:

@@ -69,5 +69,13 @@ class CRUDLessonProgress(CRUDBase[LessonProgress, LessonProgressCreate, LessonPr
             .all()
         )
 
+    def count_completed_by_enrollment(self, db: Session, enrollment_id: int) -> int:
+        return (
+            self._query_active(db)
+            .filter(LessonProgress.enrollment_id == enrollment_id)
+            .filter(LessonProgress.is_completed == True)
+            .count()
+        )
+
 
 lesson_progress = CRUDLessonProgress(LessonProgress)

@@ -7,7 +7,7 @@ from datetime import datetime
 from app.schemas.response import APIResponse
 from app.utils import deps
 from app.schemas.user import UserContext
-from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, LeaderboardResponseSchema, SchoolDashboardStatsSchema, SchoolReportSchema, TradingLeaderboardResponseSchema
+from app.schemas.report import AdminDashboardReportSchema, AdminDashboardStatsSchema, LeaderboardResponseSchema, SchoolDashboardStatsSchema, SchoolReportSchema, TradingLeaderboardResponseSchema, StudentLessonProgressSchema
 from app.services.report import report_service
 from app.core.decorators import cache_endpoint
 
@@ -67,6 +67,17 @@ async def get_school_dashboard_stats(
 ):
     report_data = report_service.get_school_dashboard_stats(db, school_id=school_id, current_user_context=context, start_date=start_date, end_date=end_date)
     return APIResponse(message="School dashboard stats retrieved successfully", data=report_data)
+
+
+@router.get("/student/lesson-progress", response_model=APIResponse[StudentLessonProgressSchema])
+@cache_endpoint(ttl=300)
+async def get_student_lesson_progress(
+    *,
+    db: Session = Depends(deps.get_db),
+    context: UserContext = Depends(deps.get_current_user_with_context)
+):
+    progress_data = report_service.get_student_lesson_progress_by_level(db, current_user_context=context)
+    return APIResponse(message="Student lesson progress retrieved successfully", data=progress_data)
 
 
 @router.get("/admin/dashboard/report", response_model=APIResponse[AdminDashboardReportSchema])
