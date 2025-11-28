@@ -1,9 +1,8 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, List
+from __future__ import annotations
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from app.core.constants import CourseLevelEnum
-from app.schemas.user import User
-from app.schemas.curriculum import Curriculum
 from app.models.course_enrollment import EnrollmentStatusEnum
 
 class CourseBase(BaseModel):
@@ -28,12 +27,16 @@ class CourseUpdate(CourseBase):
 class Course(CourseBase):
     id: int
     school_id: int
-    total_enrolled_students: int = 0 # Added for dynamic retrieval
-    average_rating: float = 0.0 # Added for dynamic retrieval
+    total_enrolled_students: int = 0
     user_progress_percentage: Optional[int] = None
     user_enrollment_status: Optional[EnrollmentStatusEnum] = None
     user_started_at: Optional[datetime] = None
     user_completed_at: Optional[datetime] = None
+    curriculums: List[dict] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
-    curriculums: List[Curriculum] = []
+
+    @computed_field
+    @property
+    def average_rating(self) -> float:
+        return 0.0

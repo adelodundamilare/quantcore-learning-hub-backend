@@ -132,6 +132,10 @@ async def assign_teacher_to_course(
 ):
     updated_course = await course_service.assign_teacher(db, course_id=course_id, user_id=user_id, current_user_context=context)
     await cache.invalidate_user_cache(context.user.id)
+    await cache.invalidate_user_cache(user_id)
+    await cache.delete_pattern(f"*get_course_teachers*{course_id}*")
+    await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Teacher assigned to course successfully", data=Course.model_validate(updated_course))
 
 
@@ -145,6 +149,10 @@ async def remove_teacher_from_course(
 ):
     updated_course = await course_service.remove_teacher(db, course_id=course_id, user_id=user_id, current_user_context=context)
     await cache.invalidate_user_cache(context.user.id)
+    await cache.invalidate_user_cache(user_id)
+    await cache.delete_pattern(f"*get_course_teachers*{course_id}*")
+    await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Teacher removed from course successfully", data=Course.model_validate(updated_course))
 
 
@@ -158,6 +166,9 @@ async def enroll_student_in_course(
 ):
     updated_course = await course_service.enroll_student(db, course_id=course_id, user_id=user_id, current_user_context=context)
     await cache.invalidate_user_cache(context.user.id)
+    await cache.invalidate_user_cache(user_id)
+    await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Student enrolled in course successfully", data=Course.model_validate(updated_course))
 
 @router.delete("/{course_id}/students/{user_id}", response_model=APIResponse[Course])
@@ -170,6 +181,9 @@ async def remove_student_from_course(
 ):
     updated_course = await course_service.unenroll_student(db, course_id=course_id, user_id=user_id, current_user_context=context)
     await cache.invalidate_user_cache(context.user.id)
+    await cache.invalidate_user_cache(user_id)
+    await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Student removed from course successfully", data=Course.model_validate(updated_course))
 
 @router.get("/students/{student_id}/courses", response_model=APIResponse[List[Course]])
