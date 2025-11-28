@@ -6,6 +6,7 @@ from app.endpoints import auth, account, course, utility, school, role, permissi
 from app.realtime import websockets as websocket_events
 from fastapi.exceptions import RequestValidationError
 from app.middleware.exceptions import global_exception_handler, validation_exception_handler
+from app.core.scheduler import start_scheduler, stop_scheduler
 import socketio
 import asyncio
 
@@ -59,6 +60,11 @@ app.include_router(stock_options.router, prefix="/stock-options", tags=["Stock O
 async def startup_event():
     websocket_events.register_websocket_events(sio)
     asyncio.create_task(websocket_events.stream_prices_socketio(sio))
+    start_scheduler()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_scheduler()
 
 if __name__ == "__main__":
     import uvicorn

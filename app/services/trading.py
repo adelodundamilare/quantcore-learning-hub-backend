@@ -18,6 +18,7 @@ from app.crud.trading import (
     watchlist_stock as crud_watchlist_stock,
 )
 from app.crud.transaction import transaction as crud_transaction
+from app.crud.portfolio_snapshot import portfolio_snapshot as crud_portfolio_snapshot
 from app.crud.user import user as user_crud
 from app.crud.role import role as user_role
 from app.schemas.trading import (
@@ -364,31 +365,34 @@ class TradingService:
                 obj_in={"user_id": user_id, "balance": Decimal("0.00")}
             )
 
-        available_balance = Decimal(str(account.balance))
-        amount_invested = Decimal("0.00")
-        total_amount = Decimal("0.00")
+        today = datetime.utcnow().date()
+        latest_snapshot = crud_portfolio_snapshot.get_by_user_and_date(db, user_id, today)
 
-        positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)
+        if latest_snapshot:
+            available_balance = Decimal(str(latest_snapshot.cash_balance))
+            amount_invested = Decimal(str(latest_snapshot.stocks_value))
+            total_amount = Decimal(str(latest_snapshot.total_portfolio_value))
+        else:
+            available_balance = Decimal(str(account.balance))
+            portfolio_value = Decimal("0.00")
 
-        for pos in positions:
-            cost_basis = Decimal(str(pos.quantity)) * Decimal(str(pos.average_price))
-            amount_invested += cost_basis
+            positions = crud_portfolio_position.get_multi_by_user(db, user_id=user_id)
 
-        portfolio_value = Decimal("0.00")
-        if positions:
-            symbols = [p.symbol for p in positions]
-            price_tasks = [polygon_service.get_latest_quote(s) for s in symbols]
-            price_results = await asyncio.gather(*price_tasks, return_exceptions=True)
+            if positions:
+                symbols = [p.symbol for p in positions]
+                price_tasks = [polygon_service.get_latest_quote(s) for s in symbols]
+                price_results = await asyncio.gather(*price_tasks, return_exceptions=True)
 
-            for pos, quote_result in zip(positions, price_results):
-                if isinstance(quote_result, Exception) or not quote_result or not quote_result.get('price'):
-                    logger.warning(f"Could not fetch price for {pos.symbol}. Skipping from portfolio value calculation.")
-                    continue
+                for pos, quote_result in zip(positions, price_results):
+                    if isinstance(quote_result, Exception) or not quote_result or not quote_result.get('price'):
+                        logger.warning(f"Could not fetch price for {pos.symbol}. Skipping from portfolio value calculation.")
+                        continue
 
-                current_price = Decimal(str(quote_result['price']))
-                portfolio_value += Decimal(str(pos.quantity)) * current_price
+                    current_price = Decimal(str(quote_result['price']))
+                    portfolio_value += Decimal(str(pos.quantity)) * current_price
 
-        total_amount = available_balance + amount_invested
+            amount_invested = portfolio_value
+            total_amount = available_balance + amount_invested
 
         period_pnl = None
         period_start_value = None
@@ -815,15 +819,30 @@ class TradingService:
         from_date: Optional[datetime] = None,
         to_date: Optional[datetime] = None
     ) -> List[PortfolioHistoricalDataPointSchema]:
+        start_datetime = from_date if from_date else datetime.utcnow() - timedelta(days=365)
+        end_datetime = to_date if to_date else datetime.utcnow()
+
+        snapshots = crud_portfolio_snapshot.get_multi_by_user_in_range(
+            db, user_id=user_id, from_date=start_datetime, to_date=end_datetime
+        )
+
+        if snapshots:
+            return [
+                PortfolioHistoricalDataPointSchema(
+                    timestamp=snapshot.snapshot_date,
+                    total_value=snapshot.total_portfolio_value
+                )
+                for snapshot in snapshots
+            ]
+
         all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
 
         if not all_trades:
             return []
 
         earliest_trade_date = min(trade.executed_at.date() for trade in all_trades)
-
-        start_date = from_date.date() if from_date else earliest_trade_date
-        end_date = to_date.date() if to_date else datetime.utcnow().date()
+        start_date = start_datetime.date() if start_datetime else earliest_trade_date
+        end_date = end_datetime.date() if end_datetime else datetime.utcnow().date()
 
         if start_date > end_date:
             raise HTTPException(
@@ -831,6 +850,22 @@ class TradingService:
                 detail="from_date must be before to_date"
             )
 
+        historical = await self._calculate_portfolio_history(
+            db, user_id, all_trades, start_date, end_date
+        )
+        
+        await self._save_snapshots_from_history(db, user_id, all_trades, start_date, end_date)
+        
+        return historical
+
+    async def _calculate_portfolio_history(
+        self,
+        db: Session,
+        user_id: int,
+        all_trades: list,
+        start_date,
+        end_date
+    ) -> List[PortfolioHistoricalDataPointSchema]:
         current_holdings = defaultdict(Decimal)
         initial_trades = [t for t in all_trades if t.executed_at.date() < start_date]
 
@@ -1114,5 +1149,214 @@ class TradingService:
         )
 
         return result
+
+    async def create_daily_portfolio_snapshots(self, db: Session) -> int:
+        users = user_crud.get_multi(db, skip=0, limit=10000)
+        snapshot_count = 0
+
+        for user in users:
+            all_trades = crud_trade_order.get_multi_by_user(db, user_id=user.id)
+
+            if not all_trades:
+                continue
+
+            latest_snapshot = crud_portfolio_snapshot.get_latest_by_user(db, user_id=user.id)
+            snapshot_date = latest_snapshot.snapshot_date.date() + timedelta(days=1) if latest_snapshot else datetime.utcnow().date()
+
+            if snapshot_date > datetime.utcnow().date():
+                continue
+
+            holdings = self._calculate_holdings_at_date(all_trades, snapshot_date)
+            portfolio_value = await self._calculate_portfolio_value_at_date(holdings, snapshot_date)
+
+            cash_balance = self._calculate_cash_balance_at_date(db, user.id, all_trades, snapshot_date)
+
+            stocks_value = portfolio_value
+            total_value = cash_balance + stocks_value
+
+            realized_pnl = self._calculate_realized_pnl(all_trades, snapshot_date)
+            unrealized_pnl = await self._calculate_unrealized_pnl(holdings, snapshot_date, all_trades)
+
+            percent_change = await self._calculate_percent_change(db, user.id, snapshot_date, total_value)
+            percent_change_from_start = await self._calculate_percent_change_from_start(db, user.id, total_value)
+
+            snapshot_data = {
+                "user_id": user.id,
+                "snapshot_date": snapshot_date,
+                "total_portfolio_value": float(total_value),
+                "cash_balance": float(cash_balance),
+                "stocks_value": float(stocks_value),
+                "holdings": dict(holdings) if holdings else {},
+                "realized_pnl": float(realized_pnl),
+                "unrealized_pnl": float(unrealized_pnl),
+                "total_pnl": float(realized_pnl + unrealized_pnl),
+                "percent_change": float(percent_change),
+                "percent_change_from_start": float(percent_change_from_start)
+            }
+
+            try:
+                existing = crud_portfolio_snapshot.get_by_user_and_date(db, user.id, snapshot_date)
+                if existing:
+                    crud_portfolio_snapshot.update(db, db_obj=existing, obj_in=snapshot_data)
+                else:
+                    crud_portfolio_snapshot.create(db, obj_in=snapshot_data)
+                snapshot_count += 1
+            except Exception as e:
+                logger.error(f"Error creating snapshot for user {user.id} on {snapshot_date}: {e}")
+
+        return snapshot_count
+
+    async def _save_snapshots_from_history(
+        self,
+        db: Session,
+        user_id: int,
+        all_trades: list,
+        start_date,
+        end_date
+    ) -> None:
+        all_snapshots = crud_portfolio_snapshot.get_multi_by_user_in_range(
+            db, user_id=user_id, 
+            from_date=start_date, 
+            to_date=end_date
+        )
+        existing_dates = {s.snapshot_date.date() for s in all_snapshots}
+
+        holdings = self._calculate_holdings_at_date(all_trades, start_date - timedelta(days=1))
+        current_date = start_date
+
+        while current_date <= end_date:
+            if current_date in existing_dates:
+                current_date += timedelta(days=1)
+                continue
+
+            for trade in [t for t in all_trades if t.executed_at.date() == current_date]:
+                qty = Decimal(str(trade.quantity))
+                if trade.order_type == OrderTypeEnum.BUY:
+                    holdings[trade.symbol] = holdings.get(trade.symbol, Decimal('0')) + qty
+                elif trade.order_type == OrderTypeEnum.SELL:
+                    holdings[trade.symbol] = holdings.get(trade.symbol, Decimal('0')) - qty
+                    if holdings[trade.symbol] <= 0:
+                        holdings.pop(trade.symbol, None)
+
+            portfolio_value = await self._calculate_portfolio_value_at_date(holdings, current_date)
+            cash_balance = self._calculate_cash_balance_at_date(db, user_id, all_trades, current_date)
+            stocks_value = portfolio_value
+            total_value = cash_balance + stocks_value
+
+            realized_pnl = self._calculate_realized_pnl(all_trades, current_date)
+            unrealized_pnl = await self._calculate_unrealized_pnl(holdings, current_date, all_trades)
+
+            percent_change = await self._calculate_percent_change(db, user_id, current_date, total_value)
+            percent_change_from_start = await self._calculate_percent_change_from_start(db, user_id, total_value)
+
+            snapshot_data = {
+                "user_id": user_id,
+                "snapshot_date": current_date,
+                "total_portfolio_value": float(total_value),
+                "cash_balance": float(cash_balance),
+                "stocks_value": float(stocks_value),
+                "holdings": dict(holdings) if holdings else {},
+                "realized_pnl": float(realized_pnl),
+                "unrealized_pnl": float(unrealized_pnl),
+                "total_pnl": float(realized_pnl + unrealized_pnl),
+                "percent_change": float(percent_change),
+                "percent_change_from_start": float(percent_change_from_start)
+            }
+
+            try:
+                crud_portfolio_snapshot.create(db, obj_in=snapshot_data)
+            except Exception as e:
+                logger.error(f"Error saving snapshot for user {user_id} on {current_date}: {e}")
+
+            current_date += timedelta(days=1)
+
+    def _calculate_realized_pnl(
+        self,
+        all_trades: list,
+        target_date
+    ) -> Decimal:
+        realized_pnl = Decimal("0.00")
+
+        relevant_trades = [
+            t for t in all_trades
+            if t.executed_at.date() <= target_date and t.status == OrderStatusEnum.FILLED
+        ]
+
+        for trade in relevant_trades:
+            if trade.order_type == OrderTypeEnum.SELL:
+                cost_basis = Decimal(str(trade.quantity)) * Decimal(str(trade.executed_price))
+                sale_proceeds = Decimal(str(trade.total_amount))
+                realized_pnl += sale_proceeds - cost_basis
+
+        return realized_pnl
+
+    async def _calculate_unrealized_pnl(
+        self,
+        holdings: dict,
+        target_date,
+        all_trades: list
+    ) -> Decimal:
+        if not holdings:
+            return Decimal("0.00")
+
+        unrealized_pnl = Decimal("0.00")
+
+        for symbol, quantity in holdings.items():
+            position = next((t for t in all_trades if t.symbol == symbol and t.status == OrderStatusEnum.FILLED), None)
+            if not position:
+                continue
+
+            cost_basis = Decimal(str(position.average_price)) * Decimal(str(quantity))
+            current_price = await self._get_historical_price(symbol, target_date)
+            current_value = Decimal(str(current_price)) * Decimal(str(quantity))
+
+            unrealized_pnl += current_value - cost_basis
+
+        return unrealized_pnl
+
+    async def _calculate_percent_change(
+        self,
+        db: Session,
+        user_id: int,
+        target_date,
+        current_value: Decimal
+    ) -> Decimal:
+        target_date_obj = target_date if isinstance(target_date, datetime) else datetime.combine(target_date, datetime.min.time())
+        previous_date = (target_date_obj - timedelta(days=1)).date()
+
+        previous_snapshot = crud_portfolio_snapshot.get_by_user_and_date(db, user_id, previous_date)
+        
+        if not previous_snapshot:
+            return Decimal("0.00")
+
+        previous_value = Decimal(str(previous_snapshot.total_portfolio_value))
+        if previous_value == 0:
+            return Decimal("0.00")
+
+        change = current_value - previous_value
+        percent_change = (change / previous_value) * Decimal("100")
+        return percent_change.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    async def _calculate_percent_change_from_start(
+        self,
+        db: Session,
+        user_id: int,
+        current_value: Decimal
+    ) -> Decimal:
+        fund_additions = crud_transaction.get_multi_by_user_and_type(
+            db, user_id=user_id, transaction_type="fund_addition"
+        )
+
+        if not fund_additions:
+            return Decimal("0.00")
+
+        starting_capital = Decimal(str(fund_additions[0].amount))
+        if starting_capital == 0:
+            return Decimal("0.00")
+
+        change = current_value - starting_capital
+        percent_change = (change / starting_capital) * Decimal("100")
+        return percent_change.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
 
 trading_service = TradingService()

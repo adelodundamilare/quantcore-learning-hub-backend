@@ -536,4 +536,24 @@ def create_trading_router():
         news_articles = await polygon_service.get_stock_news(symbol=symbol, limit=limit)
         return APIResponse(message=f"News for {symbol} retrieved successfully", data=[NewsArticle(**article) for article in news_articles])
 
+    @router.post("/snapshots/generate", response_model=APIResponse[dict])
+    async def generate_portfolio_snapshots(
+        db: Session = Depends(deps.get_transactional_db),
+        context: UserContext = Depends(deps.get_current_user_with_context)
+    ):
+        from app.core.constants import RoleEnum
+        from app.utils.permission import PermissionHelper
+
+        if not (PermissionHelper.is_super_admin(context) or PermissionHelper.is_school_admin(context)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions"
+            )
+
+        snapshot_count = await trading_service.create_daily_portfolio_snapshots(db)
+        return APIResponse(
+            message="Portfolio snapshots generated successfully",
+            data={"snapshots_created": snapshot_count}
+        )
+
     return router

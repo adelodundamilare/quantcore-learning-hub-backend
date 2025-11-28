@@ -41,5 +41,6 @@ class User(Base):
     account_balance = relationship("AccountBalance", back_populates="user", uselist=False, cascade="all, delete-orphan")
     portfolio_positions = relationship("PortfolioPosition", back_populates="user", cascade="all, delete-orphan")
     trade_orders = relationship("TradeOrder", back_populates="user", cascade="all, delete-orphan")
+    portfolio_snapshots = relationship("PortfolioSnapshot", back_populates="user", cascade="all, delete-orphan")
     stripe_customer = relationship("StripeCustomer", back_populates="user", uselist=False, cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
