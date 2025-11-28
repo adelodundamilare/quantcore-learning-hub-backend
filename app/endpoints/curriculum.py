@@ -63,6 +63,7 @@ async def delete_curriculum(
 ):
     response = await curriculum_service.delete_curriculum(db, curriculum_id=curriculum_id, current_user_context=context)
     await cache.invalidate_user_cache(context.user.id)
+    await cache.clear()
     return APIResponse(message=response["message"])
 
 

@@ -95,6 +95,9 @@ async def delete_course(
 ):
     deleted_course = await course_service.delete_course(db, course_id=course_id, current_user_context=context)
     await cache.invalidate_user_cache(context.user.id)
+    await cache.delete_pattern(f"*{course_id}*")
+    await cache.delete_pattern("*get_my_courses*")
+    await cache.delete_pattern("*get_student_courses*")
     return APIResponse(message="Course deleted successfully", data=Course.model_validate(deleted_course))
 
 

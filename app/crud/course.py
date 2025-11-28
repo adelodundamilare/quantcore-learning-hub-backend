@@ -20,11 +20,18 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
             selectinload(Course.students),
             selectinload(Course.school),
             selectinload(Course.curriculums).selectinload(Curriculum.lessons),
-            selectinload(Course.enrollments).selectinload(CourseEnrollment.lesson_progress)
+            selectinload(Course.enrollments).selectinload(CourseEnrollment.lesson_progress),
+            selectinload(Course.ratings)
         )
 
     def _query_active(self, db: Session):
         return self._query_with_relationships(db).filter(Course.deleted_at.is_(None))
+
+    def create(self, db: Session, obj_in: dict):
+        db_obj = Course(**obj_in)
+        db.add(db_obj)
+        db.commit()
+        return self.get(db, id=db_obj.id)
 
     def get(self, db: Session, id: int):
         return self._query_active(db).filter(Course.id == id).first()

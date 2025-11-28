@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 
 from app.crud.curriculum import curriculum as crud_curriculum
 from app.crud.course import course as crud_course
+from app.crud.lesson import lesson as crud_lesson
 from app.schemas.curriculum import CurriculumCreate, CurriculumUpdate, Curriculum
 from app.schemas.user import UserContext
 from app.core.constants import RoleEnum
@@ -63,7 +64,14 @@ class CurriculumService:
 
         course_id = curriculum.course_id
         school_id = curriculum.course.school_id
+        
+        lesson_ids = [lesson.id for lesson in curriculum.lessons]
+        
+        for lesson in curriculum.lessons:
+            crud_lesson.delete(db, id=lesson.id)
+        
         crud_curriculum.delete(db, id=curriculum_id)
-        return {"message": "Curriculum deleted successfully"}
+        
+        return {"message": "Curriculum deleted successfully", "lesson_ids": lesson_ids}
 
 curriculum_service = CurriculumService()

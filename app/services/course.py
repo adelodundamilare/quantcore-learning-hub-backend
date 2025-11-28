@@ -41,7 +41,7 @@ class CourseService:
         if permission_helper.is_teacher(current_user_context):
             crud_course.add_teacher_to_course(db, course=new_course, user=teacher_user)
 
-        db.flush()
+        # db.refresh(new_course)
 
         notification_service.create_notification(
             db,

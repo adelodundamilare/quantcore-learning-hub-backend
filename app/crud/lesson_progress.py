@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from app.crud.base import CRUDBase
 from app.models.lesson_progress import LessonProgress
+from app.models.lesson import Lesson
 from app.schemas.lesson_progress import LessonProgressCreate, LessonProgressUpdate
 
 class CRUDLessonProgress(CRUDBase[LessonProgress, LessonProgressCreate, LessonProgressUpdate]):
@@ -46,8 +47,10 @@ class CRUDLessonProgress(CRUDBase[LessonProgress, LessonProgressCreate, LessonPr
     def get_completed_lesson_ids(self, db: Session, enrollment_id: int) -> List[int]:
         results = (
             self._query_active(db)
+            .join(Lesson, LessonProgress.lesson_id == Lesson.id)
             .filter(LessonProgress.enrollment_id == enrollment_id)
             .filter(LessonProgress.is_completed == True)
+            .filter(Lesson.deleted_at.is_(None))
             .all()
         )
         return [lp.lesson_id for lp in results]
