@@ -2,7 +2,10 @@ import functools
 from typing import Optional, Callable, Any
 from app.core.cache import cache
 from app.core.config import settings
+from fastapi import Request
+import logging
 
+logger = logging.getLogger(__name__)
 
 def cache_endpoint(ttl: int = 300, key_prefix: Optional[str] = None):
     def decorator(func: Callable) -> Callable:
@@ -15,12 +18,20 @@ def cache_endpoint(ttl: int = 300, key_prefix: Optional[str] = None):
             
             cached_value = await cache.get(cache_key)
             if cached_value is not None:
+                request = kwargs.get('request') or next((arg for arg in args if isinstance(arg, Request)), None)
+                if request:
+                    request.state.cache_status = "HIT"
+                logger.debug(f"Cache HIT for key: {cache_key}")
                 return cached_value
             
             result = await func(*args, **kwargs)
             
             if result is not None:
                 await cache.set(cache_key, result, ttl=ttl)
+                request = kwargs.get('request') or next((arg for arg in args if isinstance(arg, Request)), None)
+                if request:
+                    request.state.cache_status = "MISS"
+                logger.debug(f"Cache MISS for key: {cache_key} (stored with TTL {ttl}s)")
             
             return result
         

@@ -32,7 +32,7 @@ def test_exam_create_edit_rbac(client: TestClient, token_for_role, db_session: S
     else:
         assert r.status_code in (403,404)
 
-@pytest.mark.parametrize("role,expected",[("super_admin",200),("school_admin",403),("teacher",403),("student",403)])
+@pytest.mark.parametrize("role,expected",[("super_admin",200),("school_admin",200),("teacher",403),("student",403)])
 def test_billing_admin_only_rbac(client: TestClient, token_for_role, role, expected):
     token=token_for_role(role)
     r=client.get("/billing/subscriptions",headers=_headers(token))

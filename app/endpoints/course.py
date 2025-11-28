@@ -138,6 +138,7 @@ async def assign_teacher_to_course(
     await cache.invalidate_user_cache(user_id)
     await cache.delete_pattern(f"*get_course_teachers*{course_id}*")
     await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*get_teacher_courses_admin*{user_id}*")
     await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Teacher assigned to course successfully", data=Course.model_validate(updated_course))
 
@@ -155,6 +156,7 @@ async def remove_teacher_from_course(
     await cache.invalidate_user_cache(user_id)
     await cache.delete_pattern(f"*get_course_teachers*{course_id}*")
     await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*get_teacher_courses_admin*{user_id}*")
     await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Teacher removed from course successfully", data=Course.model_validate(updated_course))
 
@@ -171,6 +173,7 @@ async def enroll_student_in_course(
     await cache.invalidate_user_cache(context.user.id)
     await cache.invalidate_user_cache(user_id)
     await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*get_student_courses_admin*{user_id}*")
     await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Student enrolled in course successfully", data=Course.model_validate(updated_course))
 
@@ -186,6 +189,7 @@ async def remove_student_from_course(
     await cache.invalidate_user_cache(context.user.id)
     await cache.invalidate_user_cache(user_id)
     await cache.delete_pattern(f"*get_my_courses*")
+    await cache.delete_pattern(f"*get_student_courses_admin*{user_id}*")
     await cache.delete_pattern(f"*{course_id}*")
     return APIResponse(message="Student removed from course successfully", data=Course.model_validate(updated_course))
 
