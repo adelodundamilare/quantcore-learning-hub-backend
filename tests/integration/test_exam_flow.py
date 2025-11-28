@@ -1,9 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from app.core.constants import ADMIN_SCHOOL_NAME
+from app.core.constants import ADMIN_SCHOOL_NAME, EnrollmentStatusEnum
 from app.crud.school import school as crud_school
 from app.crud.course import course as crud_course
+from app.crud.course_enrollment import course_enrollment as enrollment_crud
+from app.models.course_enrollment import CourseEnrollment
 
 
 def test_exam_full_flow(client: TestClient, token_for_role, db_session: Session):
@@ -63,6 +65,11 @@ def test_exam_full_flow(client: TestClient, token_for_role, db_session: Session)
     
     enroll_resp = client.post(f"/courses/{course.id}/students/{student_id}", headers=headers)
     assert 200 <= enroll_resp.status_code < 300, f"Enrollment failed: {enroll_resp.text}"
+    
+    course_enrollment = db_session.query(CourseEnrollment).filter_by(course_id=course.id, user_id=student_id).first()
+    if course_enrollment:
+        course_enrollment.status = EnrollmentStatusEnum.IN_PROGRESS
+        db_session.commit()
     print(f"[OK] Student enrolled in course")
     
     print("[5] Student starting exam attempt")

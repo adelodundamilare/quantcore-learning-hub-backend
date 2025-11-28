@@ -18,12 +18,12 @@ def test_trading_cache_invalidation(client: TestClient, token_for_role, db_sessi
     print(f"\n[0] Adding funds to account")
     balance_obj = db_session.query(AccountBalance).filter(AccountBalance.user_id == user_id).first()
     if balance_obj:
-        balance_obj.balance = 10000.0
+        balance_obj.balance = 50000.0
     else:
-        balance_obj = AccountBalance(user_id=user_id, balance=10000.0)
+        balance_obj = AccountBalance(user_id=user_id, balance=50000.0)
         db_session.add(balance_obj)
     db_session.commit()
-    print(f"[PASS] Account funded with $10000")
+    print(f"[PASS] Account funded with $50000")
 
     symbol = "AAPL"
     quantity = 5

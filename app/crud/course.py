@@ -30,16 +30,22 @@ class CRUDCourse(CRUDBase[Course, CourseCreate, CourseUpdate]):
         return self._query_active(db).filter(Course.id == id).first()
 
     def add_teacher_to_course(self, db: Session, *, course: Course, user: User) -> Course:
-        if user not in course.teachers:
-            course.teachers.append(user)
-            db.add(course)
-        return course
+         if user not in course.teachers:
+             course.teachers.append(user)
+             db.add(course)
+             db.flush()
+             db.expunge_all()
+             course = db.query(Course).filter(Course.id == course.id).first()
+         return course
 
     def remove_teacher_from_course(self, db: Session, *, course: Course, user: User) -> Course:
-        if user in course.teachers:
-            course.teachers.remove(user)
-            db.add(course)
-        return course
+         if user in course.teachers:
+             course.teachers.remove(user)
+             db.add(course)
+             db.flush()
+             db.expunge_all()
+             course = db.query(Course).filter(Course.id == course.id).first()
+         return course
 
     def enroll_student_in_course(self, db: Session, *, course: Course, user: User) -> Course:
         if user not in course.students:

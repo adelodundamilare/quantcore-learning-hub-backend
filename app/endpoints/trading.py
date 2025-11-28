@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -62,15 +63,20 @@ def create_trading_router():
             )
             message = f"Found {len(stocks)} securities matching '{search}'"
         else:
+            symbols_to_fetch = POPULAR_STOCKS[:limit]
+            details_list = await asyncio.gather(
+                *[polygon_service.get_stock_details_combined(symbol) for symbol in symbols_to_fetch],
+                return_exceptions=True
+            )
+            
             stocks = []
-            for symbol in POPULAR_STOCKS[:limit]:
-                try:
-                    details = await polygon_service.get_stock_details_combined(symbol)
-                    if details:
-                        stock = StockSchema(symbol=symbol, name=details.get("name"), price=details.get("price"))
+            for details in details_list:
+                if details and not isinstance(details, Exception):
+                    try:
+                        stock = StockSchema(**details)
                         stocks.append(stock)
-                except Exception as e:
-                    continue
+                    except Exception:
+                        continue
 
             message = f"Popular stocks retrieved ({len(stocks)} stocks)"
 
