@@ -86,7 +86,7 @@ class CourseService:
         if not teacher_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher user not found.")
 
-        permission_helper.validate_user_role_in_school(db, teacher_user.id, course.school.id, RoleEnum.TEACHER)
+        permission_helper.validate_user_role_in_school(db, teacher_user.id, course.school_id, RoleEnum.TEACHER)
 
         if permission_helper.is_teacher_of_course(teacher_user.id, course):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already a teacher for this course.")
@@ -140,7 +140,7 @@ class CourseService:
         if not student_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student user not found.")
 
-        permission_helper.validate_user_role_in_school(db, student_user.id, course.school.id, RoleEnum.STUDENT)
+        permission_helper.validate_user_role_in_school(db, student_user.id, course.school_id, RoleEnum.STUDENT)
 
         if permission_helper.is_student_of_course(student_user.id, course):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already enrolled in this course.")

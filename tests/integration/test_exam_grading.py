@@ -21,12 +21,18 @@ def test_exam_grading_and_passing(client: TestClient, token_for_role, db_session
     course_id = r_course.json().get("data", {}).get("id")
     print(f"[OK] Course created")
     
-    print("[2] Creating exam with 5 questions")
-    r_exam = client.post("/exams/", headers=admin_headers, json={"title": f"Grading Test {uuid.uuid4().hex[:6]}", "course_id": course_id})
+    print("[2] Creating first exam with 5 questions (60% score)")
+    r_exam = client.post("/exams/", headers=admin_headers, json={"title": f"Grading Test 60% {uuid.uuid4().hex[:6]}", "course_id": course_id})
     assert 200 <= r_exam.status_code < 300
     exam_id = r_exam.json().get("data", {}).get("id")
     
+    print("[2b] Creating second exam with 5 questions (100% score)")
+    r_exam2 = client.post("/exams/", headers=admin_headers, json={"title": f"Grading Test 100% {uuid.uuid4().hex[:6]}", "course_id": course_id})
+    assert 200 <= r_exam2.status_code < 300
+    exam_id2 = r_exam2.json().get("data", {}).get("id")
+    
     questions = []
+    questions2 = []
     for i in range(5):
         r_qs = client.post(
             f"/exams/{exam_id}/questions",
@@ -40,10 +46,30 @@ def test_exam_grading_and_passing(client: TestClient, token_for_role, db_session
                 "points": 20
             }]
         )
-        assert 200 <= r_qs.status_code < 300
+        assert 200 <= r_qs.status_code < 300, f"Failed to create question {i+1}: {r_qs.text}"
         question_id = r_qs.json().get("data", [{}])[0].get("id")
+        assert question_id is not None, f"No question ID returned for question {i+1}"
         questions.append({"id": question_id, "correct": i % 4})
-    print(f"[OK] Exam created with 5 questions (100 points total)")
+        
+        # Add questions to second exam
+        r_qs2 = client.post(
+            f"/exams/{exam_id2}/questions",
+            headers=admin_headers,
+            json=[{
+                "exam_id": exam_id2,
+                "question_text": f"Question {i+1}?",
+                "question_type": "multiple_choice",
+                "options": ["A", "B", "C", "D"],
+                "correct_answer": i % 4,
+                "points": 20
+            }]
+        )
+        assert 200 <= r_qs2.status_code < 300, f"Failed to create question {i+1} for exam 2: {r_qs2.text}"
+        question_id2 = r_qs2.json().get("data", [{}])[0].get("id")
+        assert question_id2 is not None, f"No question ID returned for exam 2 question {i+1}"
+        questions2.append({"id": question_id2, "correct": i % 4})
+        
+    print(f"[OK] Both exams created with 5 questions each (100 points total)")
     
     print("[3] Enrolling student and starting exam")
     student_headers = {"Authorization": f"Bearer {token_for_role('student')}"}
@@ -68,12 +94,22 @@ def test_exam_grading_and_passing(client: TestClient, token_for_role, db_session
             "answer_text": answer
         })
     
+    print(f"[DEBUG] Attempt ID: {attempt_id}")
+    print(f"[DEBUG] Number of questions: {len(questions)}")
+    print(f"[DEBUG] Question IDs: {[q['id'] for q in questions]}")
+    print(f"[DEBUG] Number of answers to submit: {len(answers)}")
+    
     submit_resp = client.post(
         f"/exams/attempts/{attempt_id}/answers/bulk",
         headers=student_headers,
         json=answers
     )
-    assert 200 <= submit_resp.status_code < 300
+    
+    if submit_resp.status_code != 200:
+        print(f"[ERROR] Submit failed with status {submit_resp.status_code}")
+        print(f"[ERROR] Response body: {submit_resp.text}")
+    
+    assert 200 <= submit_resp.status_code < 300, f"Submit answers failed with status {submit_resp.status_code}: {submit_resp.text}"
     print(f"[OK] Answers submitted (60% correct)")
     
     print("[5] Submitting exam")
@@ -91,23 +127,28 @@ def test_exam_grading_and_passing(client: TestClient, token_for_role, db_session
     # Should have 60 points out of 100
     print(f"[OK] Score calculated (60%)")
     
-    print("[8] Test with perfect score (100%)")
-    r_attempt2 = client.post(f"/exams/{exam_id}/attempts", headers=student_headers)
+    print("[8] Test with perfect score (100%) on second exam")
+    r_attempt2 = client.post(f"/exams/{exam_id2}/attempts", headers=student_headers)
+    assert 200 <= r_attempt2.status_code < 300, f"Failed to start second attempt: {r_attempt2.text}"
     attempt_id2 = r_attempt2.json().get("data", {}).get("id")
+    assert attempt_id2 is not None, "No attempt ID for second attempt"
     
     answers_perfect = []
-    for q in questions:
+    for q in questions2:
         answers_perfect.append({
             "exam_attempt_id": attempt_id2,
             "question_id": q["id"],
             "answer_text": q["correct"]
         })
     
-    client.post(f"/exams/attempts/{attempt_id2}/answers/bulk", headers=student_headers, json=answers_perfect)
-    client.post(f"/exams/attempts/{attempt_id2}/submit", headers=student_headers)
+    submit_resp2 = client.post(f"/exams/attempts/{attempt_id2}/answers/bulk", headers=student_headers, json=answers_perfect)
+    assert 200 <= submit_resp2.status_code < 300, f"Failed to submit answers for attempt 2: {submit_resp2.text}"
+    
+    submit2 = client.post(f"/exams/attempts/{attempt_id2}/submit", headers=student_headers)
+    assert 200 <= submit2.status_code < 300, f"Failed to submit exam attempt 2: {submit2.text}"
     
     attempt_perfect = client.get(f"/exams/attempts/{attempt_id2}", headers=student_headers)
-    assert 200 <= attempt_perfect.status_code < 300
+    assert 200 <= attempt_perfect.status_code < 300, f"Failed to get perfect attempt details: {attempt_perfect.text}"
     print(f"[OK] Perfect score exam submitted")
     
     print("[SUCCESS] Exam grading and passing verified")

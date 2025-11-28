@@ -16,7 +16,7 @@ from app.core.cache import cache
 
 router = APIRouter()
 
-@router.post("/", response_model=APIResponse[None])
+@router.post("/", response_model=APIResponse[School])
 async def create_school(
     *,
     db: Session = Depends(deps.get_transactional_db),
@@ -30,12 +30,13 @@ async def create_school(
             detail="Only Admins can create schools."
         )
 
-    await user_service.admin_invite_user(
+    new_user = await user_service.admin_invite_user(
         db, invite_in=invite_in
     )
+    school = crud_school.get_by_name(db, name=invite_in.school_name)
     await cache.invalidate_user_cache(context.user.id)
 
-    return APIResponse(message="School and admin created successfully")
+    return APIResponse(message="School and admin created successfully", data=school)
 
 @router.get("/{school_id}", response_model=APIResponse[School])
 @cache_endpoint(ttl=600)

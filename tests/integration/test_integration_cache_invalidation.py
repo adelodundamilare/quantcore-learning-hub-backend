@@ -31,14 +31,14 @@ def test_cache_invalidation_on_student_unenroll(client: TestClient, token_for_ro
     print(f"[OK] Student enrolled")
     
     print("[3] Verify course in student's course list")
-    my_courses1 = client.get("/courses/me", headers=student_headers)
+    my_courses1 = client.get(f"/courses/students/{student_id}/courses", headers=student_headers)
     assert 200 <= my_courses1.status_code < 300
     course_ids1 = [c.get("id") for c in my_courses1.json().get("data", [])]
     assert course_id in course_ids1, "Course should be in student's list"
     print(f"[OK] Course in student's list (cached)")
     
     print("[4] Request courses again (from cache)")
-    my_courses2 = client.get("/courses/me", headers=student_headers)
+    my_courses2 = client.get(f"/courses/students/{student_id}/courses", headers=student_headers)
     assert 200 <= my_courses2.status_code < 300
     course_ids2 = [c.get("id") for c in my_courses2.json().get("data", [])]
     assert course_id in course_ids2, "Course should still be cached"
@@ -50,7 +50,7 @@ def test_cache_invalidation_on_student_unenroll(client: TestClient, token_for_ro
     print(f"[OK] Student unenrolled (cache should be invalidated)")
     
     print("[6] Verify course no longer in student's course list")
-    my_courses3 = client.get("/courses/me", headers=student_headers)
+    my_courses3 = client.get(f"/courses/students/{student_id}/courses", headers=student_headers)
     assert 200 <= my_courses3.status_code < 300
     course_ids3 = [c.get("id") for c in my_courses3.json().get("data", [])]
     assert course_id not in course_ids3, "Course should not be in student's list after unenroll"

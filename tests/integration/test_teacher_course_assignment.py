@@ -42,7 +42,7 @@ def test_teacher_course_assignment_flow(client: TestClient, token_for_role, db_s
     print(f"[OK] Teacher can view course")
     
     print("[5] Verifying course appears in teacher's course list")
-    teacher_courses = client.get("/courses/me", headers=teacher_headers)
+    teacher_courses = client.get(f"/courses/teachers/{teacher_id}/courses", headers=teacher_headers)
     assert 200 <= teacher_courses.status_code < 300, f"Failed to get teacher's courses: {teacher_courses.text}"
     course_ids = [c.get("id") for c in teacher_courses.json().get("data", [])]
     assert course_id in course_ids, "Course not in teacher's course list"
@@ -73,7 +73,7 @@ def test_teacher_course_assignment_flow(client: TestClient, token_for_role, db_s
     print(f"[OK] Teacher cannot view course after removal")
     
     print("[9] Verifying course no longer appears in teacher's course list")
-    teacher_courses_after = client.get("/courses/me", headers=teacher_headers)
+    teacher_courses_after = client.get(f"/courses/teachers/{teacher_id}/courses", headers=teacher_headers)
     assert 200 <= teacher_courses_after.status_code < 300, f"Failed to get teacher's courses: {teacher_courses_after.text}"
     course_ids_after = [c.get("id") for c in teacher_courses_after.json().get("data", [])]
     assert course_id not in course_ids_after, "Course still in teacher's course list after removal"

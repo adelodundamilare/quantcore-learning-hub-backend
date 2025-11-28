@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, status, Query, Body
 from sqlalchemy.orm import Session
 from app.core.constants import CourseLevelEnum
 
@@ -104,7 +104,7 @@ async def create_questions(
     *,
     db: Session = Depends(deps.get_transactional_db),
     exam_id: int,
-    questions_in: List[QuestionCreate],
+    questions_in: List[QuestionCreate] = Body(...),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     for question in questions_in:
@@ -195,7 +195,7 @@ async def submit_bulk_answers(
     *,
     db: Session = Depends(deps.get_transactional_db),
     attempt_id: int,
-    answers_in: List[UserAnswerCreate],
+    answers_in: List[UserAnswerCreate] = Body(...),
     context: UserContext = Depends(deps.get_current_user_with_context)
 ):
     user_answers = exam_attempt_service.submit_bulk_answers(

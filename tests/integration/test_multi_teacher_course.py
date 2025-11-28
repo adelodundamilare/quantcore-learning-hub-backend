@@ -85,14 +85,14 @@ def test_multi_teacher_course(client: TestClient, token_for_role, db_session: Se
     print(f"[OK] Lesson created by teacher 2: {lesson_id}")
     
     print("[10] Verify curriculum appears in both teachers' courses")
-    my_courses1 = client.get("/courses/me", headers=teacher1_headers)
-    assert 200 <= my_courses1.status_code < 300
+    my_courses1 = client.get(f"/courses/teachers/{teacher1_id}/courses", headers=teacher1_headers)
+    assert 200 <= my_courses1.status_code < 300, f"Failed to get teacher 1 courses: {my_courses1.text}"
     courses1 = my_courses1.json().get("data", [])
     my_course1 = next((c for c in courses1 if c.get("id") == course_id), None)
     assert my_course1 is not None, "Course not in teacher 1's courses"
     
-    my_courses2 = client.get("/courses/me", headers=teacher2_headers)
-    assert 200 <= my_courses2.status_code < 300
+    my_courses2 = client.get(f"/courses/teachers/{teacher2_id}/courses", headers=teacher2_headers)
+    assert 200 <= my_courses2.status_code < 300, f"Failed to get teacher 2 courses: {my_courses2.text}"
     courses2 = my_courses2.json().get("data", [])
     my_course2 = next((c for c in courses2 if c.get("id") == course_id), None)
     assert my_course2 is not None, "Course not in teacher 2's courses"

@@ -46,6 +46,11 @@ def _generate_cache_key(func_name: str, args: tuple, kwargs: dict, prefix: Optio
     if context and hasattr(context, 'user'):
         user_id = context.user.id
     
+    if not user_id:
+        current_user = kwargs.get('current_user')
+        if current_user and hasattr(current_user, 'id'):
+            user_id = current_user.id
+    
     if user_id:
         if prefix:
             key_parts = [f"user:{user_id}:{prefix}"]

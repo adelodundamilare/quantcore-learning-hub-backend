@@ -40,7 +40,7 @@ def test_student_course_progress_and_results_flow(client: TestClient, token_for_
     print(f"[OK] Student enrolled in course")
     
     print("[3] Verifying student sees course in their list")
-    my_courses = client.get("/courses/me", headers=student_headers)
+    my_courses = client.get(f"/courses/students/{student_id}/courses", headers=student_headers)
     assert 200 <= my_courses.status_code < 300, f"Failed to get student courses: {my_courses.text}"
     course_ids = [c.get("id") for c in my_courses.json().get("data", [])]
     assert course_id in course_ids, "Course not in student's course list"

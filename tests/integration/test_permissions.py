@@ -93,7 +93,8 @@ def test_teacher_course_access_boundaries(client: TestClient, token_for_role, db
     print(f"[OK] Teacher A created course: {course_id}")
     
     print("[2] Verify course in Teacher A's course list")
-    my_courses_a = client.get("/courses/me", headers=teacher_a_headers)
+    my_courses_a = client.get(f"/courses/teachers/{teacher_a_id}/courses", headers=teacher_a_headers)
+    assert 200 <= my_courses_a.status_code < 300, f"Failed to get teacher courses: {my_courses_a.text}"
     course_ids_a = [c.get("id") for c in my_courses_a.json().get("data", [])]
     assert course_id in course_ids_a, "Teacher A should see own course"
     print(f"[OK] Course in Teacher A's course list")
@@ -108,7 +109,8 @@ def test_teacher_course_access_boundaries(client: TestClient, token_for_role, db
     print(f"[OK] Teacher B denied access (403)")
     
     print("[4] Verify course not in Teacher B's course list")
-    my_courses_b = client.get("/courses/me", headers=teacher_b_headers)
+    my_courses_b = client.get(f"/courses/teachers/{teacher_b_id}/courses", headers=teacher_b_headers)
+    assert 200 <= my_courses_b.status_code < 300, f"Failed to get teacher B courses: {my_courses_b.text}"
     course_ids_b = [c.get("id") for c in my_courses_b.json().get("data", [])]
     assert course_id not in course_ids_b, "Teacher B should not see Teacher A's course"
     print(f"[OK] Course not in Teacher B's course list")

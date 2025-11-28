@@ -50,12 +50,18 @@ def db_session(database_engine):
 def client(db_session):
     # Re-initialize the app for each test function to ensure a clean state
     from importlib import reload
+    from app.core.cache import cache
     reload(main)
     main.app.dependency_overrides[get_db] = lambda: db_session
     main.app.dependency_overrides[deps_utils.get_db] = lambda: db_session
     main.app.dependency_overrides[deps_utils.get_transactional_db] = lambda: db_session
     with TestClient(main.app) as test_client:
         yield test_client
+    import asyncio
+    try:
+        asyncio.run(cache.clear())
+    except:
+        pass
 
 @pytest.fixture
 def super_admin_token(client, db_session, _ensure_admin_school_exists, _ensure_super_admin_role_exists):
@@ -193,16 +199,12 @@ def user_factory(db_session):
         return test_user
     return _user_factory
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def token_for_role(client, db_session, _ensure_admin_school_exists):
     """Create tokens for different roles - fixes missing fixture error"""
     admin_school = _ensure_admin_school_exists
-    tokens = {}
 
     def _create_token_for_role(role_name: str):
-        if role_name in tokens:
-            return tokens[role_name]
-
         role = crud_role.get_by_name(db_session, name=getattr(RoleEnum, role_name.upper()))
         if not role:
             role = crud_role.create(db_session, obj_in={"name": getattr(RoleEnum, role_name.upper()).value})
@@ -226,7 +228,6 @@ def token_for_role(client, db_session, _ensure_admin_school_exists):
             or body.get("token", {}).get("access_token")
             or body.get("access_token")
         )
-        tokens[role_name] = token
         return token
 
     return _create_token_for_role
