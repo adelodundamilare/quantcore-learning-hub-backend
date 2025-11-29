@@ -44,4 +44,4 @@ RUN mkdir -p /app/uploads /app/logs /app/temp
 
 EXPOSE 80
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80", "--workers", "1"]
+CMD ["/bin/sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 80 --workers 1"]
