@@ -21,7 +21,12 @@ def parse_size_to_bytes(size_str: str) -> int:
 
 class S3Service:
     def __init__(self):
-        self.s3_client = boto3.client('s3', region_name=settings.AWS_REGION)
+        self.s3_client = boto3.client(
+            's3',
+            region_name=settings.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
+        )
         self.bucket_name = settings.S3_BUCKET_NAME
         self.max_single_upload_size = parse_size_to_bytes(settings.MAX_SINGLE_UPLOAD_SIZE)
         self.chunk_size = parse_size_to_bytes(settings.CHUNK_SIZE)
@@ -39,8 +44,7 @@ class S3Service:
                 Bucket=self.bucket_name,
                 Key=filename,
                 Body=file,
-                ContentType=content_type,
-                ACL='public-read'
+                ContentType=content_type
             )
             return f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{filename}"
         except ClientError as e:
@@ -55,8 +59,7 @@ class S3Service:
                 Bucket=self.bucket_name,
                 Key=filename,
                 Body=file,
-                ContentType='application/pdf',
-                ACL='public-read'
+                ContentType='application/pdf'
             )
             return f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{filename}"
         except ClientError as e:
@@ -94,8 +97,7 @@ class S3Service:
                 Bucket=self.bucket_name,
                 Key=filename,
                 Body=file,
-                ContentType=content_type,
-                ACL='public-read'
+                ContentType=content_type
             )
             return f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{filename}"
         except ClientError as e:
@@ -107,8 +109,7 @@ class S3Service:
             multipart_upload = self.s3_client.create_multipart_upload(
                 Bucket=self.bucket_name,
                 Key=filename,
-                ContentType='video/mp4',
-                ACL='public-read'
+                ContentType='video/mp4'
             )
 
             parts = []
@@ -168,7 +169,7 @@ class S3Service:
 
     def _update_progress(self, upload_id: str, total_size: int, uploaded_size: int, filename: str, url: Optional[str] = None):
         self._cleanup_old_progress()
-        
+
         progress_data = {
             'total_size': total_size,
             'uploaded_size': uploaded_size,
@@ -184,7 +185,7 @@ class S3Service:
 
     def get_upload_progress(self, upload_id: str) -> Dict[str, Any]:
         self._cleanup_old_progress()
-        
+
         progress = self.upload_progress.get(upload_id, {'progress_percent': 0})
         if progress.get('progress_percent') == 100 and 'url' not in progress:
             progress['url'] = f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{progress.get('filename')}"
