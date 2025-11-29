@@ -175,8 +175,11 @@ class TradeOrderBase(BaseModel):
 class TradeOrderCreate(TradeOrderBase):
     pass
 
-class TradeOrderUpdate(TradeOrderBase):
-    pass
+class TradeOrderUpdate(BaseModel):
+    symbol: Optional[str] = None
+    order_type: Optional[OrderTypeEnum] = None
+    quantity: Optional[int] = None
+    price: Optional[float] = None
 
 class TradeOrder(TradeOrderBase):
     id: int
@@ -184,6 +187,7 @@ class TradeOrder(TradeOrderBase):
     status: OrderStatusEnum
     executed_price: Optional[float] = None
     total_amount: Optional[float] = None
+    realized_pnl: Optional[float] = None
     executed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -197,15 +201,35 @@ class HistoricalDataPointSchema(BaseModel):
     close: float
     volume: float
     timestamp: datetime
+    price_change: Optional[float] = None
+    price_change_percent: Optional[float] = None
+    percent_from_open: Optional[float] = None
+    percent_from_52week_high: Optional[float] = None
+    percent_from_52week_low: Optional[float] = None
 
 class HistoricalDataSchema(BaseModel):
     symbol: str
     results_count: int
     results: List[HistoricalDataPointSchema]
+    period_start_price: Optional[float] = None
+    period_end_price: Optional[float] = None
+    period_percent_change: Optional[float] = None
+    period_high: Optional[float] = None
+    period_low: Optional[float] = None
 
 class PortfolioHistoricalDataPointSchema(BaseModel):
     timestamp: datetime
     total_value: float
+    cash_balance: float
+    stocks_value: float
+    holdings: Optional[dict] = None
+    realized_pnl: float
+    unrealized_pnl: float
+    total_pnl: float
+    percent_change: float
+    percent_change_from_start: float
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class PortfolioHistoricalDataSchema(BaseModel):
     user_id: int

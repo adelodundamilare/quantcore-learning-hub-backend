@@ -68,7 +68,7 @@ def create_trading_router():
                 *[polygon_service.get_stock_details_combined(symbol) for symbol in symbols_to_fetch],
                 return_exceptions=True
             )
-            
+
             stocks = []
             for details in details_list:
                 if details and not isinstance(details, Exception):
@@ -488,30 +488,13 @@ def create_trading_router():
             timespan
         )
 
-        if not historical_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Historical data for {ticker} not found."
-            )
-
-        try:
-            historical_schema = HistoricalDataSchema(
-                symbol=historical_data.get('symbol', ticker),
-                results_count=historical_data.get('results_count', 0),
-                results=[
-                    HistoricalDataPointSchema(**res)
-                    for res in historical_data.get('results', [])
-                ]
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error parsing historical data: {e}"
-            )
+        enriched_historical_data = await trading_service.get_enriched_historical_data(
+            historical_data, ticker
+        )
 
         return APIResponse(
             message=f"Historical data for {ticker} retrieved successfully",
-            data=historical_schema
+            data=enriched_historical_data
         )
 
     @router.get("/news", response_model=APIResponse[List[NewsArticle]])

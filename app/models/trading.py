@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Enum, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -45,7 +45,7 @@ class PortfolioPosition(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     symbol = Column(String, index=True, nullable=False)
     quantity = Column(Integer, nullable=False)
-    average_price = Column(Float, nullable=False)
+    average_price = Column(Numeric(18, 8), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -59,10 +59,11 @@ class TradeOrder(Base):
     symbol = Column(String, index=True, nullable=False)
     order_type = Column(Enum(OrderTypeEnum), nullable=False)
     quantity = Column(Integer, nullable=False)
-    price = Column(Float, nullable=False)
+    price = Column(Numeric(18, 8), nullable=False)
     status = Column(Enum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.PENDING)
-    executed_price = Column(Float, nullable=True)
-    total_amount = Column(Float, nullable=False)
+    executed_price = Column(Numeric(18, 8), nullable=True)
+    total_amount = Column(Numeric(18, 8), nullable=False)
+    realized_pnl = Column(Numeric(18, 8), nullable=True)
     executed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

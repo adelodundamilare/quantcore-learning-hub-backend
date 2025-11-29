@@ -41,6 +41,8 @@ class Settings(BaseSettings):
 
     AWS_REGION: str = "us-west-2"
     S3_BUCKET_NAME: str
+    AWS_ACCESS_KEY_ID: str
+    AWS_SECRET_ACCESS_KEY: str
 
     MAX_FILE_SIZE: str = "2GB"
     MAX_VIDEO_SIZE: str = "5GB"

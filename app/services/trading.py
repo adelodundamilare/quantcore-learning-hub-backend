@@ -23,6 +23,8 @@ from app.crud.user import user as user_crud
 from app.crud.role import role as user_role
 from app.schemas.trading import (
     AccountBalanceSchema,
+    HistoricalDataPointSchema,
+    HistoricalDataSchema,
     OrderPreview,
     OrderPreviewRequest,
     PortfolioHistoricalDataPointSchema,
@@ -618,12 +620,13 @@ class TradingService:
             Decimal('0.01'), rounding=ROUND_HALF_UP
         )
 
+        realized_pnl = None
         if order_in.order_type == OrderTypeEnum.BUY:
             await self._process_buy_order(
                 db, user_id, order_in, account, executed_price, total_amount
             )
         elif order_in.order_type == OrderTypeEnum.SELL:
-            await self._process_sell_order(
+            realized_pnl = await self._process_sell_order(
                 db, user_id, order_in, account, executed_price, total_amount
             )
         else:
@@ -639,7 +642,8 @@ class TradingService:
             "status": OrderStatusEnum.FILLED,
             "executed_price": executed_price,
             "total_amount": total_amount,
-            "executed_at": datetime.utcnow()
+            "executed_at": datetime.utcnow(),
+            "realized_pnl": realized_pnl
         })
 
         new_trade = crud_trade_order.create(db, obj_in=trade_data)
@@ -724,7 +728,7 @@ class TradingService:
         account,
         executed_price: Decimal,
         total_amount: Decimal
-    ):
+    ) -> Decimal:
         position = crud_portfolio_position.get_by_user_and_symbol(
             db,
             user_id=user_id,
@@ -744,6 +748,9 @@ class TradingService:
                        f"trying to sell {order_in.quantity}"
             )
 
+        cost_basis = Decimal(str(order_in.quantity)) * Decimal(str(position.average_price))
+        realized_pnl = total_amount - cost_basis
+
         new_balance = Decimal(str(account.balance)) + total_amount
         crud_account_balance.update(
             db,
@@ -761,6 +768,8 @@ class TradingService:
                 db_obj=position,
                 obj_in={"quantity": new_quantity}
             )
+
+        return realized_pnl
 
     async def preview_order(
         self,
@@ -830,7 +839,15 @@ class TradingService:
             return [
                 PortfolioHistoricalDataPointSchema(
                     timestamp=snapshot.snapshot_date,
-                    total_value=snapshot.total_portfolio_value
+                    total_value=snapshot.total_portfolio_value,
+                    cash_balance=snapshot.cash_balance,
+                    stocks_value=snapshot.stocks_value,
+                    holdings=snapshot.holdings,
+                    realized_pnl=snapshot.realized_pnl,
+                    unrealized_pnl=snapshot.unrealized_pnl,
+                    total_pnl=snapshot.total_pnl,
+                    percent_change=snapshot.percent_change,
+                    percent_change_from_start=snapshot.percent_change_from_start
                 )
                 for snapshot in snapshots
             ]
@@ -853,9 +870,9 @@ class TradingService:
         historical = await self._calculate_portfolio_history(
             db, user_id, all_trades, start_date, end_date
         )
-        
+
         await self._save_snapshots_from_history(db, user_id, all_trades, start_date, end_date)
-        
+
         return historical
 
     async def _calculate_portfolio_history(
@@ -866,6 +883,9 @@ class TradingService:
         start_date,
         end_date
     ) -> List[PortfolioHistoricalDataPointSchema]:
+        account = crud_account_balance.get_by_user_id(db, user_id)
+        initial_balance = Decimal(str(account.balance)) if account else Decimal('0')
+
         current_holdings = defaultdict(Decimal)
         initial_trades = [t for t in all_trades if t.executed_at.date() < start_date]
 
@@ -890,6 +910,8 @@ class TradingService:
 
         historical_data = []
         current_date = start_date
+        cash_balance = await self._calculate_cash_at_date(db, user_id, all_trades, start_date)
+        start_portfolio_value = cash_balance
 
         while current_date <= end_date:
             for trade in trades_by_date.get(current_date, []):
@@ -902,7 +924,8 @@ class TradingService:
                     if current_holdings[trade.symbol] <= 0:
                         current_holdings.pop(trade.symbol, None)
 
-            total_value = Decimal('0.00')
+            stocks_value = Decimal('0.00')
+            holdings_data = {}
 
             if current_holdings:
                 symbols = list(current_holdings.keys())
@@ -916,16 +939,66 @@ class TradingService:
                 for symbol, price in zip(symbols, prices):
                     if isinstance(price, Exception):
                         logger.error(f"Error fetching price for {symbol} on {current_date}: {price}")
-                        price = Decimal('0.00')
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Cannot calculate historical portfolio value: missing price data for {symbol} on {current_date.date()}"
+                        )
                     else:
                         price = Decimal(str(price))
 
-                    total_value += current_holdings[symbol] * price
+                    position_value = current_holdings[symbol] * price
+                    stocks_value += position_value
+                    holdings_data[symbol] = {
+                        "quantity": float(current_holdings[symbol]),
+                        "price": float(price),
+                        "value": float(position_value)
+                    }
+
+            cash_balance = await self._calculate_cash_at_date(db, user_id, all_trades, current_date)
+            total_value = cash_balance + stocks_value
+
+            realized_pnl = await self._calculate_realized_pnl_at_date(db, user_id, all_trades, current_date)
+            unrealized_pnl = stocks_value - (Decimal(str(sum(
+                Decimal(str(trade.quantity)) * Decimal(str(trade.executed_price))
+                for trade in all_trades
+                if trade.executed_at.date() <= current_date and trade.order_type == OrderTypeEnum.BUY
+            ))))
+            total_pnl = realized_pnl + unrealized_pnl
+
+            percent_change = Decimal('0')
+            if start_portfolio_value > 0:
+                percent_change = ((total_value - start_portfolio_value) / start_portfolio_value) * Decimal('100')
+
+            percent_change_from_start = Decimal('0')
+            if initial_balance > 0:
+                percent_change_from_start = ((total_value - initial_balance) / initial_balance) * Decimal('100')
 
             historical_data.append(
                 PortfolioHistoricalDataPointSchema(
                     timestamp=current_date,
                     total_value=float(total_value.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    cash_balance=float(cash_balance.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    stocks_value=float(stocks_value.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    holdings=holdings_data if holdings_data else None,
+                    realized_pnl=float(realized_pnl.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    unrealized_pnl=float(unrealized_pnl.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    total_pnl=float(total_pnl.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    percent_change=float(percent_change.quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    )),
+                    percent_change_from_start=float(percent_change_from_start.quantize(
                         Decimal('0.01'), rounding=ROUND_HALF_UP
                     ))
                 )
@@ -935,16 +1008,58 @@ class TradingService:
 
         return historical_data
 
+    async def _calculate_cash_at_date(
+        self,
+        db: Session,
+        user_id: int,
+        all_trades: list,
+        target_date
+    ) -> Decimal:
+        account = crud_account_balance.get_by_user_id(db, user_id)
+        cash_balance = Decimal(str(account.balance)) if account else Decimal('0')
+
+        relevant_trades = [t for t in all_trades if t.executed_at.date() <= target_date]
+
+        for trade in relevant_trades:
+            qty = Decimal(str(trade.quantity))
+            price = Decimal(str(trade.executed_price))
+
+            if trade.order_type == OrderTypeEnum.BUY:
+                cash_balance -= (qty * price)
+            elif trade.order_type == OrderTypeEnum.SELL:
+                cash_balance += (qty * price)
+
+        return cash_balance
+
+    async def _calculate_realized_pnl_at_date(
+        self,
+        db: Session,
+        user_id: int,
+        all_trades: list,
+        target_date
+    ) -> Decimal:
+        realized_pnl = Decimal('0')
+
+        sell_trades = [t for t in all_trades if t.order_type == OrderTypeEnum.SELL and t.executed_at.date() <= target_date]
+
+        for sell_trade in sell_trades:
+            if sell_trade.realized_pnl:
+                realized_pnl += Decimal(str(sell_trade.realized_pnl))
+
+        return realized_pnl
+
     async def _get_historical_price(
         self,
         symbol: str,
         date: datetime
     ) -> float:
         try:
+            target_date = date.date() if isinstance(date, datetime) else date
+
             historical_data = await polygon_service.get_historical_data(
                 symbol,
-                date,
-                date,
+                target_date,
+                target_date,
                 multiplier=1,
                 timespan="day"
             )
@@ -952,15 +1067,20 @@ class TradingService:
             if historical_data and historical_data.get("results"):
                 return float(historical_data["results"][0]["close"])
 
-            latest_quote = await polygon_service.get_latest_quote(symbol)
-            if latest_quote and latest_quote.get("price"):
-                return float(latest_quote["price"])
+            today = datetime.utcnow().date()
+            if target_date == today:
+                latest_quote = await polygon_service.get_latest_quote(symbol)
+                if latest_quote and latest_quote.get("price"):
+                    return float(latest_quote["price"])
 
-            return 0.0
+            logger.warning(f"No historical price data available for {symbol} on {target_date}")
+            raise ValueError(f"Cannot calculate portfolio value: missing price data for {symbol} on {target_date}")
 
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f"Error fetching historical price for {symbol}: {e}")
-            return 0.0
+            raise ValueError(f"Failed to fetch price for {symbol}: {str(e)}")
 
     async def _calculate_period_portfolio_pnl(
         self,
@@ -971,7 +1091,7 @@ class TradingService:
     ) -> dict:
         """Calculate portfolio P&L between two dates, adjusted for cash flows during the period"""
         all_trades = crud_trade_order.get_multi_by_user(db, user_id=user_id)
-        
+
         account = crud_account_balance.get_by_user_id(db, user_id=user_id)
         all_fund_transactions = crud_transaction.get_multi_by_user_and_type(
             db, user_id=user_id, transaction_type="fund_addition"
@@ -1028,7 +1148,7 @@ class TradingService:
         fund_additions = crud_transaction.get_multi_by_user_and_type_up_to_date(
             db, user_id=user_id, transaction_type="fund_addition", up_to_date=target_date
         )
-        
+
         for transaction in fund_additions:
             cash_balance += Decimal(str(transaction.amount))
 
@@ -1090,8 +1210,11 @@ class TradingService:
         total_value = Decimal("0.00")
         for symbol, price in zip(symbols, prices):
             if isinstance(price, Exception):
-                logger.warning(f"Could not get price for {symbol} on {target_date}, using 0")
-                price = Decimal("0.00")
+                logger.error(f"Could not get price for {symbol} on {target_date}: {price}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot calculate portfolio value: missing price data for {symbol} on {target_date.date()}"
+                )
             else:
                 price = Decimal(str(price))
 
@@ -1215,8 +1338,8 @@ class TradingService:
         end_date
     ) -> None:
         all_snapshots = crud_portfolio_snapshot.get_multi_by_user_in_range(
-            db, user_id=user_id, 
-            from_date=start_date, 
+            db, user_id=user_id,
+            from_date=start_date,
             to_date=end_date
         )
         existing_dates = {s.snapshot_date.date() for s in all_snapshots}
@@ -1325,7 +1448,7 @@ class TradingService:
         previous_date = (target_date_obj - timedelta(days=1)).date()
 
         previous_snapshot = crud_portfolio_snapshot.get_by_user_and_date(db, user_id, previous_date)
-        
+
         if not previous_snapshot:
             return Decimal("0.00")
 
@@ -1357,6 +1480,94 @@ class TradingService:
         change = current_value - starting_capital
         percent_change = (change / starting_capital) * Decimal("100")
         return percent_change.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    async def get_enriched_historical_data(
+        self,
+        raw_historical_data: dict,
+        ticker: str
+    ) -> HistoricalDataSchema:
+        if not raw_historical_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Historical data for {ticker} not found."
+            )
+
+        results_data = raw_historical_data.get('results', [])
+
+        enriched_results = []
+        for i, res in enumerate(results_data):
+            close_price = res.get('close', 0)
+            open_price = res.get('open', 0)
+            high_price = res.get('high', 0)
+            low_price = res.get('low', 0)
+
+            price_change = None
+            price_change_percent = None
+            percent_from_open = None
+            percent_from_52week_high = None
+            percent_from_52week_low = None
+
+            if i > 0:
+                prev_close = results_data[i-1].get('close', close_price)
+                price_change = round(close_price - prev_close, 2)
+                if prev_close != 0:
+                    price_change_percent = round((price_change / prev_close) * 100, 2)
+
+            if open_price != 0:
+                percent_from_open = round(((close_price - open_price) / open_price) * 100, 2)
+
+            if high_price != 0:
+                percent_from_52week_high = round(((close_price - high_price) / high_price) * 100, 2)
+
+            if low_price != 0:
+                percent_from_52week_low = round(((close_price - low_price) / low_price) * 100, 2)
+
+            enriched_results.append(
+                HistoricalDataPointSchema(
+                    open=res.get('open', 0),
+                    high=res.get('high', 0),
+                    low=res.get('low', 0),
+                    close=res.get('close', 0),
+                    volume=res.get('volume', 0),
+                    timestamp=res.get('timestamp'),
+                    price_change=price_change,
+                    price_change_percent=price_change_percent,
+                    percent_from_open=percent_from_open,
+                    percent_from_52week_high=percent_from_52week_high,
+                    percent_from_52week_low=percent_from_52week_low
+                )
+            )
+
+        period_start_price = None
+        period_end_price = None
+        period_percent_change = None
+        period_high = None
+        period_low = None
+
+        if enriched_results:
+            period_start_price = enriched_results[0].close
+            period_end_price = enriched_results[-1].close
+
+            if period_start_price and period_start_price != 0:
+                period_percent_change = round(
+                    ((period_end_price - period_start_price) / period_start_price) * 100, 2
+                )
+
+            period_high = max([r.high for r in enriched_results], default=None)
+            period_low = min([r.low for r in enriched_results], default=None)
+
+        historical_schema = HistoricalDataSchema(
+            symbol=raw_historical_data.get('symbol', ticker),
+            results_count=raw_historical_data.get('results_count', 0),
+            results=enriched_results,
+            period_start_price=period_start_price,
+            period_end_price=period_end_price,
+            period_percent_change=period_percent_change,
+            period_high=period_high,
+            period_low=period_low
+        )
+
+        return historical_schema
 
 
 trading_service = TradingService()

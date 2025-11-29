@@ -1,8 +1,10 @@
 import pytest
+import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
 
 from app.crud.trading import account_balance as crud_account_balance
 from app.crud.trading import trade_order as crud_trade_order
@@ -18,14 +20,48 @@ from app.crud.role import role as crud_role
 
 
 @pytest.fixture
+def mock_polygon_service(monkeypatch):
+    """Mock polygon_service for trading tests"""
+    async def mock_get_historical_data(symbol, from_date, to_date, multiplier=1, timespan="day"):
+        fixed_prices = {
+            "AAPL": 100.0,
+            "MSFT": 100.0,
+            "GOOGL": 100.0,
+            "TSLA": 100.0,
+            "NVDA": 100.0,
+            "AMZN": 100.0,
+        }
+        price = fixed_prices.get(symbol.upper(), 100.0)
+        return {
+            "results": [{"close": price}]
+        }
+
+    def mock_get_latest_quote(symbol):
+        fixed_prices = {
+            "AAPL": {"price": 100.0, "T": "AAPL"},
+            "MSFT": {"price": 100.0, "T": "MSFT"},
+            "GOOGL": {"price": 100.0, "T": "GOOGL"},
+            "TSLA": {"price": 100.0, "T": "TSLA"},
+            "NVDA": {"price": 100.0, "T": "NVDA"},
+            "AMZN": {"price": 100.0, "T": "AMZN"},
+        }
+        return fixed_prices.get(symbol.upper(), {"price": 100.0, "T": symbol.upper()})
+
+    from app.services import trading as trading_module
+    monkeypatch.setattr(trading_module.polygon_service, "get_historical_data", AsyncMock(side_effect=mock_get_historical_data))
+    monkeypatch.setattr(trading_module.polygon_service, "get_latest_quote", mock_get_latest_quote)
+    return trading_module.polygon_service
+
+
+@pytest.fixture
 def user_with_trading_account(db_session: Session, _ensure_admin_school_exists, _ensure_student_role_exists):
     """Create a user with a trading account"""
     admin_school = _ensure_admin_school_exists
     student_role = _ensure_student_role_exists
-    
+
     user_data = {
         "full_name": "Trading Test User",
-        "email": f"trader-{id(object())}@test.com",
+        "email": f"trader-{uuid.uuid4()}@test.com",
         "hashed_password": get_password_hash("testpass123"),
         "is_active": True
     }
@@ -36,10 +72,10 @@ def user_with_trading_account(db_session: Session, _ensure_admin_school_exists, 
 
 
 @pytest.mark.asyncio
-async def test_period_start_value_with_initial_balance(db_session: Session, user_with_trading_account):
+async def test_period_start_value_with_initial_balance(db_session: Session, user_with_trading_account, mock_polygon_service):
     """Test that period_start_value correctly includes initial cash balance"""
     user_id = user_with_trading_account.id
-    
+
     initial_balance = Decimal("10000.00")
     account = crud_account_balance.get_by_user_id(db_session, user_id=user_id)
     if not account:
@@ -53,7 +89,7 @@ async def test_period_start_value_with_initial_balance(db_session: Session, user
             db_obj=account,
             obj_in={"balance": initial_balance}
         )
-    
+
     fund_date = datetime.utcnow() - timedelta(days=15)
     crud_transaction.create(
         db_session,
@@ -64,17 +100,17 @@ async def test_period_start_value_with_initial_balance(db_session: Session, user
             "created_at": fund_date
         }
     )
-    
+
     start_date = datetime.utcnow() - timedelta(days=10)
     end_date = datetime.utcnow()
-    
+
     balance = await trading_service.get_account_balance(
         db_session,
         user_id=user_id,
         from_date=start_date,
         to_date=end_date
     )
-    
+
     assert balance.period_start_value is not None, "period_start_value should not be None"
     assert balance.period_start_value > 0, f"period_start_value should be > 0, got {balance.period_start_value}"
     assert balance.period_start_value >= float(initial_balance), \
@@ -82,10 +118,10 @@ async def test_period_start_value_with_initial_balance(db_session: Session, user
 
 
 @pytest.mark.asyncio
-async def test_period_pnl_with_trade_in_period(db_session: Session, user_with_trading_account):
+async def test_period_pnl_with_trade_in_period(db_session: Session, user_with_trading_account, mock_polygon_service):
     """Test that period P&L correctly tracks trades and price changes"""
     user_id = user_with_trading_account.id
-    
+
     initial_balance = Decimal("10000.00")
     account = crud_account_balance.get_by_user_id(db_session, user_id=user_id)
     if not account:
@@ -99,7 +135,7 @@ async def test_period_pnl_with_trade_in_period(db_session: Session, user_with_tr
             db_obj=account,
             obj_in={"balance": initial_balance}
         )
-    
+
     fund_date = datetime.utcnow() - timedelta(days=15)
     crud_transaction.create(
         db_session,
@@ -110,12 +146,12 @@ async def test_period_pnl_with_trade_in_period(db_session: Session, user_with_tr
             "created_at": fund_date
         }
     )
-    
+
     start_date = datetime.utcnow() - timedelta(days=10)
     end_date = datetime.utcnow() + timedelta(days=1)
-    
+
     buy_date = start_date + timedelta(days=5)
-    
+
     trade = crud_trade_order.create(
         db_session,
         obj_in={
@@ -130,28 +166,28 @@ async def test_period_pnl_with_trade_in_period(db_session: Session, user_with_tr
             "executed_at": buy_date
         }
     )
-    
+
     balance = await trading_service.get_account_balance(
         db_session,
         user_id=user_id,
         from_date=start_date,
         to_date=end_date
     )
-    
+
     assert balance.period_start_value is not None, "period_start_value should not be None"
     assert balance.period_start_value > 0, f"period_start_value should be > 0, got {balance.period_start_value}"
-    
+
     assert balance.period_end_value is not None, "period_end_value should not be None"
     assert balance.period_end_value > 0, f"period_end_value should be > 0, got {balance.period_end_value}"
-    
+
     assert balance.period_pnl is not None, "period_pnl should not be None"
 
 
 @pytest.mark.asyncio
-async def test_period_values_zero_when_no_activity(db_session: Session, user_with_trading_account):
+async def test_period_values_zero_when_no_activity(db_session: Session, user_with_trading_account, mock_polygon_service):
     """Test that period values correctly show 0 when user has no balance or trades"""
     user_id = user_with_trading_account.id
-    
+
     account = crud_account_balance.get_by_user_id(db_session, user_id=user_id)
     if not account:
         account = crud_account_balance.create(
@@ -164,17 +200,17 @@ async def test_period_values_zero_when_no_activity(db_session: Session, user_wit
             db_obj=account,
             obj_in={"balance": Decimal("0.00")}
         )
-    
+
     start_date = datetime.utcnow() - timedelta(days=10)
     end_date = datetime.utcnow()
-    
+
     balance = await trading_service.get_account_balance(
         db_session,
         user_id=user_id,
         from_date=start_date,
         to_date=end_date
     )
-    
+
     assert balance.period_start_value == 0.0, f"period_start_value should be 0.0 with no activity, got {balance.period_start_value}"
     assert balance.period_end_value == 0.0, f"period_end_value should be 0.0 with no activity, got {balance.period_end_value}"
     assert balance.period_pnl == 0.0, f"period_pnl should be 0.0 with no activity, got {balance.period_pnl}"

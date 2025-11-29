@@ -5,9 +5,34 @@ from app.crud.role import role as crud_role
 import uuid
 
 class TestAuthEndpoints:
-    def test_login_smoke(self, client, super_admin_token):
+    def test_login_smoke(self, client, super_admin_token, db_session, _ensure_admin_school_exists, _ensure_super_admin_role_exists):
+        admin_school = _ensure_admin_school_exists
+        super_admin_role = _ensure_super_admin_role_exists
+        email = f"test.superadmin.{uuid.uuid4()}@test.com"
+        
+        from app.core.security import get_password_hash
+        from app.models.user import User
+        from app.models.user_school_association import UserSchoolAssociation
+        
+        test_admin = User(
+            full_name="Test Super Admin",
+            email=email,
+            hashed_password=get_password_hash("testpass123"),
+            is_active=True
+        )
+        db_session.add(test_admin)
+        db_session.flush()
+        
+        user_school_assoc = UserSchoolAssociation(
+            user_id=test_admin.id,
+            school_id=admin_school.id,
+            role_id=super_admin_role.id
+        )
+        db_session.add(user_school_assoc)
+        db_session.commit()
+        
         response = client.post("/auth/login", json={
-            "email": "superadmin@test.com",
+            "email": email,
             "password": "testpass123"
         })
         assert 200 <= response.status_code < 300

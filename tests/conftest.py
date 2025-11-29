@@ -22,6 +22,7 @@ from app.crud.school import school as crud_school
 from app.crud.role import role as crud_role
 import uuid
 from app.core.config import settings
+from unittest.mock import AsyncMock, patch
 
 test_db_url = settings.TEST_DATABASE_URL or "sqlite:///./test.db"
 
@@ -52,9 +53,20 @@ def client(db_session):
     from importlib import reload
     from app.core.cache import cache
     reload(main)
+
     main.app.dependency_overrides[get_db] = lambda: db_session
     main.app.dependency_overrides[deps_utils.get_db] = lambda: db_session
-    main.app.dependency_overrides[deps_utils.get_transactional_db] = lambda: db_session
+
+    def get_transactional_db_override():
+        try:
+            yield db_session
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
+            raise
+
+    main.app.dependency_overrides[deps_utils.get_transactional_db] = get_transactional_db_override
+
     with TestClient(main.app) as test_client:
         yield test_client
     import asyncio

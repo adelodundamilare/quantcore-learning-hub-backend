@@ -60,5 +60,12 @@ portfolio_position = CRUDPortfolioPosition(PortfolioPosition)
 class CRUDTradeOrder(CRUDBase[TradeOrder, TradeOrderCreate, TradeOrderUpdate]):
     def get_multi_by_user(self, db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[TradeOrder]:
         return db.query(self.model).filter(self.model.user_id == user_id).offset(skip).limit(limit).all()
+    
+    def get_by_user_and_id(self, db: Session, user_id: int, trade_id: int) -> Optional[TradeOrder]:
+        return db.query(self.model).filter(
+            self.model.user_id == user_id
+        ).filter(
+            self.model.id == trade_id
+        ).first()
 
 trade_order = CRUDTradeOrder(TradeOrder)
